@@ -7,7 +7,7 @@ import {
   deleteListItem,
   searchListItems,
   getStatistics,
-} from '../services/agentdbService.js';
+} from '../services/agentdbMCPService.js';
 import fs from 'fs';
 
 /**

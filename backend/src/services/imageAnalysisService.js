@@ -44,7 +44,7 @@ If no list items are found, return an empty array: []`;
 
     // Call OpenAI Vision API
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'user',
@@ -127,7 +127,7 @@ For EACH item, provide:
 Return ONLY a valid JSON array of objects.`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'user',
@@ -141,8 +141,23 @@ Return ONLY a valid JSON array of objects.`;
     const content = response.choices[0].message.content;
 
     // Parse JSON from response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    const extractedItems = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
+    let extractedItems;
+    try {
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        extractedItems = JSON.parse(jsonMatch[0]);
+      } else {
+        extractedItems = JSON.parse(content);
+      }
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response as JSON:', content);
+      throw new Error('Failed to parse list items from text. Please try again with clearer text.');
+    }
+
+    // Validate the extracted items
+    if (!Array.isArray(extractedItems)) {
+      throw new Error('Invalid response format from AI');
+    }
 
     // Validate and normalize
     const validatedItems = extractedItems.map(item => ({

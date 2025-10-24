@@ -21,14 +21,6 @@ services:
         value: listify-agent
     healthCheckPath: /api/health
     autoDeploy: true
-    # Add CORS configuration for production
-    headers:
-      - name: Access-Control-Allow-Origin
-        value: "*"
-      - name: Access-Control-Allow-Methods
-        value: "GET, POST, PUT, DELETE, OPTIONS"
-      - name: Access-Control-Allow-Headers
-        value: "Content-Type, Authorization"
 
   # Frontend Service
   - type: web
@@ -40,7 +32,3 @@ services:
       - key: VITE_API_URL
         value: https://listify-agent-backend.onrender.com/api
     autoDeploy: true
-    # Add headers for static site
-    headers:
-      - name: Cache-Control
-        value: "public, max-age=31536000"

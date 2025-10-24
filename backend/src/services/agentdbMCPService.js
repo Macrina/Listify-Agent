@@ -5,28 +5,22 @@
 
 /**
  * Executes a SQL query using MCP AgentDB
- * Note: This is a placeholder - the actual MCP calls would be made through the MCP client
  * @param {string} query - SQL query to execute
  * @param {Array} params - Query parameters
  * @returns {Promise<Object>} - Query result
  */
 export async function executeQuery(query, params = []) {
   try {
-    // This would normally use the MCP client to call AgentDB
-    // For now, we'll simulate the MCP call structure
     console.log('MCP AgentDB Query:', query, params);
     
-    // Simulate MCP call result structure
-    return {
-      success: true,
-      results: [{
-        rows: [], // Will be populated by actual MCP call
-        totalRows: 0,
-        offset: 0,
-        limit: 100,
-        changes: 0
-      }]
-    };
+    // Use the MCP AgentDB tool to execute SQL
+    const { mcp_AgentDB_-_listify-agent_execute_sql } = await import('../../../../node_modules/@modelcontextprotocol/sdk/client/index.js');
+    
+    const result = await mcp_AgentDB_-_listify-agent_execute_sql({
+      statements: [{ sql: query, params: params }]
+    });
+    
+    return result;
   } catch (error) {
     console.error('MCP AgentDB query error:', error.message);
     throw new Error(`Database query failed: ${error.message}`);

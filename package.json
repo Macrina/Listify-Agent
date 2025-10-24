@@ -5,6 +5,7 @@
   "main": "backend/src/server.js",
   "type": "module",
   "scripts": {
+    "start": "./start-servers.sh",
     "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
     "backend:dev": "cd backend && npm run dev",
     "frontend:dev": "cd frontend && npm run dev",

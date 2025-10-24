@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ImageUploader from './components/ImageUploader';
 import TextAnalyzer from './components/TextAnalyzer';
+import LinkAnalyzer from './components/LinkAnalyzer';
 import ListDisplay from './components/ListDisplay';
 import Statistics from './components/Statistics';
 import { getLists, getStatistics } from './services/api';
@@ -18,12 +19,14 @@ function App() {
   }, []);
 
   const loadData = async () => {
+    console.log('Loading data...');
     setLoading(true);
     try {
       const [listsData, statsData] = await Promise.all([
         getLists(),
         getStatistics(),
       ]);
+      console.log('Loaded lists:', listsData);
       setLists(listsData);
       setStats(statsData);
     } catch (error) {
@@ -59,6 +62,12 @@ function App() {
           Analyze Text
         </button>
         <button
+          className={activeTab === 'link' ? 'active' : ''}
+          onClick={() => setActiveTab('link')}
+        >
+          Analyze Link
+        </button>
+        <button
           className={activeTab === 'lists' ? 'active' : ''}
           onClick={() => setActiveTab('lists')}
         >
@@ -79,6 +88,10 @@ function App() {
 
         {activeTab === 'text' && (
           <TextAnalyzer onSuccess={handleListCreated} />
+        )}
+
+        {activeTab === 'link' && (
+          <LinkAnalyzer onSuccess={handleListCreated} />
         )}
 
         {activeTab === 'lists' && (

@@ -3,12 +3,16 @@ import upload from '../middleware/upload.js';
 import {
   uploadImage,
   analyzeTextInput,
+  analyzeLinkInput,
   getAllLists,
   getListById,
   updateItem,
   deleteItem,
   searchItems,
   getStats,
+  saveItemsToList,
+  createNewList,
+  deleteList,
 } from '../controllers/listController.js';
 
 const router = express.Router();
@@ -19,13 +23,23 @@ router.post('/upload', upload.single('image'), uploadImage);
 // Text analysis
 router.post('/analyze-text', analyzeTextInput);
 
+// Link analysis
+router.post('/analyze-link', analyzeLinkInput);
+
 // List management
 router.get('/lists', getAllLists);
 router.get('/lists/:id', getListById);
+router.delete('/lists/:id', deleteList);
 
 // Item management
 router.put('/items/:id', updateItem);
 router.delete('/items/:id', deleteItem);
+
+// Save items to existing list
+router.post('/lists/:id/items', saveItemsToList);
+
+// Create new list with items
+router.post('/lists', createNewList);
 
 // Search
 router.get('/search', searchItems);

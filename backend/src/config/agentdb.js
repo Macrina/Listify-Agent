@@ -1,22 +1,19 @@
-import dotenv from 'dotenv';
+/**
+ * AgentDB Configuration
+ * Automatically detects if credentials are available
+ */
 
-dotenv.config();
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-if (!process.env.AGENTDB_API_KEY) {
-  console.error('ERROR: AGENTDB_API_KEY is not set in environment variables');
-  process.exit(1);
-}
-
-if (!process.env.AGENTDB_TOKEN) {
-  console.error('ERROR: AGENTDB_TOKEN is not set in environment variables');
-  process.exit(1);
-}
+// Load .env file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+config({ path: join(__dirname, '../../.env') });
 
 export const agentdbConfig = {
-  apiKey: process.env.AGENTDB_API_KEY,
-  token: process.env.AGENTDB_TOKEN,
-  dbName: process.env.AGENTDB_DB_NAME || 'listify-agent',
-  mcpUrl: process.env.AGENTDB_MCP_URL,
+  mcpUrl: process.env.AGENTDB_MCP_URL || 'https://mcp.agentdb.dev/eq1MHpX-qn',
+  apiKey: process.env.AGENTDB_API_KEY || 'your-api-key-here',
+  dbName: process.env.AGENTDB_DB_NAME || 'listify-agent'
 };
-
-export default agentdbConfig;

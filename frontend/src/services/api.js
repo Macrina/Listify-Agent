@@ -34,6 +34,14 @@ export async function analyzeText(text) {
 }
 
 /**
+ * Analyze a URL to extract list items
+ */
+export async function analyzeLink(url) {
+  const response = await api.post('/analyze-link', { url });
+  return response.data;
+}
+
+/**
  * Get all lists
  */
 export async function getLists(limit = 50) {
@@ -79,6 +87,37 @@ export async function searchItems(query) {
 export async function getStatistics() {
   const response = await api.get('/stats');
   return response.data.data;
+}
+
+/**
+ * Save items to an existing list
+ */
+export async function saveItemsToList(listId, items, listName = null) {
+  const response = await api.post(`/lists/${listId}/items`, {
+    items,
+    listName
+  });
+  return response.data;
+}
+
+/**
+ * Create a new list with items
+ */
+export async function createNewList(listName, items, description = null) {
+  const response = await api.post('/lists', {
+    listName,
+    items,
+    description
+  });
+  return response.data;
+}
+
+/**
+ * Delete a list
+ */
+export async function deleteList(listId) {
+  const response = await api.delete(`/lists/${listId}`);
+  return response.data;
 }
 
 /**

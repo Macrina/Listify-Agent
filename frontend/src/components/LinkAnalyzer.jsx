@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeText, getLists, saveItemsToList, createNewList } from '../services/api';
+import { analyzeLink, getLists, saveItemsToList, createNewList } from '../services/api';
 
-function TextAnalyzer({ onSuccess }) {
-  const [text, setText] = useState('');
+function LinkAnalyzer({ onSuccess }) {
+  const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [result, setResult] = useState(null);
@@ -28,8 +28,16 @@ function TextAnalyzer({ onSuccess }) {
   };
 
   const handleAnalyze = async () => {
-    if (!text.trim()) {
-      setError('Please enter some text to analyze');
+    if (!url.trim()) {
+      setError('Please enter a URL to analyze');
+      return;
+    }
+
+    // Basic URL validation
+    try {
+      new URL(url);
+    } catch (error) {
+      setError('Please enter a valid URL');
       return;
     }
 
@@ -38,31 +46,35 @@ function TextAnalyzer({ onSuccess }) {
     setResult(null);
 
     try {
-      // Step 1: Processing text
-      setLoadingStep('Processing text...');
+      // Step 1: Processing URL
+      setLoadingStep('Processing URL...');
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Step 2: AI analysis
+      // Step 2: Fetching content
+      setLoadingStep('Fetching webpage content...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Step 3: AI analysis
       setLoadingStep('Analyzing with AI...');
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Step 3: Extracting items
+      // Step 4: Extracting items
       setLoadingStep('Extracting list items...');
-      const response = await analyzeText(text);
+      const response = await analyzeLink(url);
       
-      // Step 4: Saving to database
+      // Step 5: Saving to database
       setLoadingStep('Saving to database...');
       await new Promise(resolve => setTimeout(resolve, 300));
       
       setResult(response.data);
       setShowSaveOptions(true);
-      setNewListName('Text Analysis List');
+      setNewListName(`List from ${new URL(url).hostname}`);
       
       // Reload existing lists to get the latest
       await loadExistingLists();
     } catch (err) {
       console.error('Analysis error:', err);
-      setError(err.response?.data?.error || 'Failed to analyze text');
+      setError(err.response?.data?.error || 'Failed to analyze link');
     } finally {
       setLoading(false);
       setLoadingStep('');
@@ -89,7 +101,7 @@ function TextAnalyzer({ onSuccess }) {
         await saveItemsToList(selectedListId, result.items);
       } else {
         // Create new list with custom name
-        await createNewList(newListName, result.items, `Items extracted from text`);
+        await createNewList(newListName, result.items, `Items extracted from ${url}`);
       }
 
       // Call onSuccess to refresh the parent component
@@ -98,7 +110,7 @@ function TextAnalyzer({ onSuccess }) {
       }
       
       // Reset form
-      setText('');
+      setUrl('');
       setResult(null);
       setShowSaveOptions(false);
       setNewListName('');
@@ -114,7 +126,7 @@ function TextAnalyzer({ onSuccess }) {
   };
 
   const handleClear = () => {
-    setText('');
+    setUrl('');
     setResult(null);
     setError(null);
     setShowSaveOptions(false);
@@ -124,78 +136,80 @@ function TextAnalyzer({ onSuccess }) {
   };
 
   return (
-    <div className="text-analyzer-container">
-      <div className="analyzer-section">
-        <h2>Analyze Text</h2>
-        <p className="description">
-          Paste or type text containing lists, tasks, or notes. Our AI will extract and structure the information.
-        </p>
+    <div className="link-analyzer-container">
+      <h2>Analyze Web Link</h2>
+      <p className="description">
+        Enter a website URL to extract list items, products, or structured information. Our AI will analyze the content and extract relevant items.
+      </p>
 
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Paste your text here...&#10;&#10;Example:&#10;- Buy groceries&#10;- Call dentist&#10;- Finish project report by Friday"
-          disabled={loading}
-          rows={10}
-          className="text-input"
-        />
+      <input
+        type="url"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="https://example.com/shopping-list"
+        disabled={loading}
+        className="url-input"
+      />
 
-        <div className="button-group">
-          <button
-            onClick={handleAnalyze}
-            disabled={!text.trim() || loading}
-            className="btn btn-primary"
-          >
-            {loading ? 'Processing...' : 'Analyze Text'}
+      <div className="button-group">
+        <button
+          onClick={handleAnalyze}
+          disabled={!url.trim() || loading}
+          className="btn btn-primary"
+        >
+          {loading ? 'Processing...' : 'Analyze Link'}
+        </button>
+
+        {(url || result) && (
+          <button onClick={handleClear} className="btn btn-secondary">
+            Clear
           </button>
-
-          {(text || result) && (
-            <button onClick={handleClear} className="btn btn-secondary">
-              Clear
-            </button>
-          )}
-        </div>
-
-        {loading && (
-          <div className="loading-progress">
-            <div className="loading-spinner"></div>
-            <div className="loading-text">
-              <h4>Processing Your Text</h4>
-              <p>{loadingStep}</p>
-            </div>
-            <div className="progress-steps">
-              <div className={`step ${loadingStep.includes('Processing') ? 'active' : 'completed'}`}>
-                <span className="step-number">1</span>
-                <span className="step-label">Process</span>
-              </div>
-              <div className={`step ${loadingStep.includes('Analyzing') ? 'active' : loadingStep.includes('Processing') ? 'pending' : 'completed'}`}>
-                <span className="step-number">2</span>
-                <span className="step-label">AI Analysis</span>
-              </div>
-              <div className={`step ${loadingStep.includes('Extracting') ? 'active' : loadingStep.includes('Analyzing') || loadingStep.includes('Processing') ? 'pending' : 'completed'}`}>
-                <span className="step-number">3</span>
-                <span className="step-label">Extract</span>
-              </div>
-              <div className={`step ${loadingStep.includes('Saving') ? 'active' : 'pending'}`}>
-                <span className="step-number">4</span>
-                <span className="step-label">Save</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="error-message">
-            <strong>Error:</strong> {error}
-          </div>
         )}
       </div>
+
+      {loading && (
+        <div className="loading-progress">
+          <div className="loading-spinner"></div>
+          <div className="loading-text">
+            <h4>Processing Your Link</h4>
+            <p>{loadingStep}</p>
+          </div>
+          <div className="progress-steps">
+            <div className={`step ${loadingStep.includes('Processing') ? 'active' : 'completed'}`}>
+              <span className="step-number">1</span>
+              <span className="step-label">Process</span>
+            </div>
+            <div className={`step ${loadingStep.includes('Fetching') ? 'active' : loadingStep.includes('Processing') ? 'pending' : 'completed'}`}>
+              <span className="step-number">2</span>
+              <span className="step-label">Fetch</span>
+            </div>
+            <div className={`step ${loadingStep.includes('Analyzing') ? 'active' : loadingStep.includes('Fetching') || loadingStep.includes('Processing') ? 'pending' : 'completed'}`}>
+              <span className="step-number">3</span>
+              <span className="step-label">AI Analysis</span>
+            </div>
+            <div className={`step ${loadingStep.includes('Extracting') ? 'active' : loadingStep.includes('Analyzing') || loadingStep.includes('Fetching') || loadingStep.includes('Processing') ? 'pending' : 'completed'}`}>
+              <span className="step-number">4</span>
+              <span className="step-label">Extract</span>
+            </div>
+            <div className={`step ${loadingStep.includes('Saving') ? 'active' : 'pending'}`}>
+              <span className="step-number">5</span>
+              <span className="step-label">Save</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-message">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
 
       {result && (
         <div className="result-section">
           <h3>Extraction Results</h3>
           <div className="result-summary">
-            <p>Successfully extracted <strong>{result.itemCount}</strong> items!</p>
+            <p>Successfully extracted <strong>{result.itemCount}</strong> items from <strong>{new URL(url).hostname}</strong>!</p>
           </div>
 
           <div className="extracted-items">
@@ -286,4 +300,4 @@ function TextAnalyzer({ onSuccess }) {
   );
 }
 
-export default TextAnalyzer;
+export default LinkAnalyzer;

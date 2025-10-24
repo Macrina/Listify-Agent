@@ -2,13 +2,13 @@
 
 Base URL: `http://localhost:3001/api`
 
-## Authentication
+## Overview
 
-Currently, the API does not require authentication. In production, you should add authentication middleware.
+The Listify Agent API provides endpoints for AI-powered list extraction from images and text, list management, and analytics. All endpoints return JSON responses with a consistent format.
 
 ## Response Format
 
-All API responses follow this format:
+All API responses follow this structure:
 
 ```json
 {
@@ -18,6 +18,10 @@ All API responses follow this format:
   "error": "Error message if success is false"
 }
 ```
+
+## Authentication
+
+Currently, the API does not require authentication. In production, implement authentication middleware.
 
 ## Endpoints
 
@@ -32,8 +36,13 @@ Check if the API is running.
 {
   "success": true,
   "message": "Listify Agent API is running",
-  "timestamp": "2025-10-23T20:00:00.000Z"
+  "timestamp": "2025-01-23T20:00:00.000Z"
 }
+```
+
+**Example (cURL):**
+```bash
+curl http://localhost:3001/api/health
 ```
 
 ---
@@ -74,17 +83,15 @@ const result = await response.json();
 {
   "success": true,
   "data": {
-    "listId": 1,
-    "itemCount": 5,
     "items": [
       {
         "item_name": "Buy milk",
         "category": "groceries",
         "quantity": "2 gallons",
-        "priority": "medium",
         "notes": "Prefer organic"
       }
-    ]
+    ],
+    "itemCount": 5
   },
   "message": "Successfully extracted 5 items from image"
 }
@@ -131,17 +138,15 @@ const result = await response.json();
 {
   "success": true,
   "data": {
-    "listId": 2,
-    "itemCount": 3,
     "items": [
       {
         "item_name": "Buy milk",
         "category": "groceries",
         "quantity": null,
-        "priority": "medium",
         "notes": null
       }
-    ]
+    ],
+    "itemCount": 3
   },
   "message": "Successfully extracted 3 items from text"
 }
@@ -151,7 +156,7 @@ const result = await response.json();
 
 ### Get All Lists
 
-Retrieve all lists with metadata.
+Retrieve all lists with metadata and item counts.
 
 **GET** `/api/lists?limit=50`
 
@@ -170,11 +175,11 @@ curl http://localhost:3001/api/lists?limit=10
   "data": [
     {
       "id": 1,
-      "source_type": "image",
-      "source_metadata": "{\"originalName\":\"list.jpg\"}",
-      "created_at": "2025-10-23T20:00:00.000Z",
-      "item_count": 5,
-      "updated_at": "2025-10-23T20:00:00.000Z"
+      "list_name": "Grocery List",
+      "description": "Items extracted from image",
+      "created_at": "2025-01-23T20:00:00.000Z",
+      "updated_at": "2025-01-23T20:00:00.000Z",
+      "item_count": 5
     }
   ],
   "count": 1
@@ -202,22 +207,94 @@ curl http://localhost:3001/api/lists/1
 {
   "success": true,
   "data": {
+    "id": 1,
     "listId": 1,
+    "list_name": "Grocery List",
+    "listName": "Grocery List",
+    "description": "Items extracted from image",
+    "created_at": "2025-01-23T20:00:00.000Z",
+    "updated_at": "2025-01-23T20:00:00.000Z",
     "items": [
       {
         "id": 1,
         "item_name": "Buy milk",
         "category": "groceries",
         "quantity": "2 gallons",
-        "priority": "medium",
         "notes": "Prefer organic",
-        "status": "active",
-        "completed_at": null,
-        "created_at": "2025-10-23T20:00:00.000Z",
-        "updated_at": "2025-10-23T20:00:00.000Z"
+        "status": "pending",
+        "source_type": "photo",
+        "extracted_at": "2025-01-23T20:00:00.000Z",
+        "metadata": null
       }
     ],
     "count": 1
+  }
+}
+```
+
+---
+
+### Create New List
+
+Create a new list with items.
+
+**POST** `/api/lists`
+
+**Headers:**
+- `Content-Type: application/json`
+
+**Body:**
+```json
+{
+  "listName": "My Shopping List",
+  "items": [
+    {
+      "item_name": "Buy milk",
+      "category": "groceries",
+      "quantity": "2 gallons",
+      "notes": "Prefer organic"
+    }
+  ]
+}
+```
+
+**Example (cURL):**
+```bash
+curl -X POST http://localhost:3001/api/lists \
+  -H "Content-Type: application/json" \
+  -d '{
+    "listName": "My Shopping List",
+    "items": [
+      {
+        "item_name": "Buy milk",
+        "category": "groceries",
+        "quantity": "2 gallons",
+        "notes": "Prefer organic"
+      }
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "listId": 1,
+    "list_name": "My Shopping List",
+    "listName": "My Shopping List",
+    "itemCount": 1,
+    "totalItems": 1,
+    "items": [
+      {
+        "item_name": "Buy milk",
+        "category": "groceries",
+        "quantity": "2 gallons",
+        "notes": "Prefer organic"
+      }
+    ],
+    "message": "Successfully created new list \"My Shopping List\" with 1 items"
   }
 }
 ```
@@ -239,13 +316,8 @@ Update an existing list item.
 **Body:**
 ```json
 {
-  "item_name": "Updated name",
-  "category": "tasks",
-  "quantity": "3",
-  "priority": "high",
-  "notes": "Additional notes",
   "status": "completed",
-  "completed_at": "2025-10-23T20:00:00.000Z"
+  "notes": "Updated notes"
 }
 ```
 
@@ -255,7 +327,7 @@ All fields are optional. Only provide fields you want to update.
 ```bash
 curl -X PUT http://localhost:3001/api/items/1 \
   -H "Content-Type: application/json" \
-  -d '{"status": "completed", "completed_at": "2025-10-23T20:00:00.000Z"}'
+  -d '{"status": "completed"}'
 ```
 
 **Example (JavaScript):**
@@ -264,10 +336,11 @@ const response = await fetch('http://localhost:3001/api/items/1', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    status: 'completed',
-    completed_at: new Date().toISOString()
+    status: 'completed'
   })
 });
+
+const result = await response.json();
 ```
 
 **Response:**
@@ -275,11 +348,8 @@ const response = await fetch('http://localhost:3001/api/items/1', {
 {
   "success": true,
   "data": {
-    "id": 1,
-    "item_name": "Buy milk",
-    "category": "groceries",
-    "status": "completed",
-    "completed_at": "2025-10-23T20:00:00.000Z"
+    "success": true,
+    "message": "Item updated successfully in AgentDB"
   },
   "message": "Item updated successfully"
 }
@@ -311,40 +381,25 @@ curl -X DELETE http://localhost:3001/api/items/1
 
 ---
 
-### Search Items
+### Delete List
 
-Search for items across all lists.
+Delete a list and all its items.
 
-**GET** `/api/search?q=keyword`
+**DELETE** `/api/lists/:id`
 
-**Query Parameters:**
-- `q` (required): Search keyword
+**Path Parameters:**
+- `id`: List ID (integer)
 
 **Example (cURL):**
 ```bash
-curl "http://localhost:3001/api/search?q=milk"
+curl -X DELETE http://localhost:3001/api/lists/1
 ```
 
 **Response:**
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 1,
-      "list_id": 1,
-      "item_name": "Buy milk",
-      "category": "groceries",
-      "quantity": "2 gallons",
-      "priority": "medium",
-      "notes": "Prefer organic",
-      "status": "active",
-      "source_type": "image",
-      "list_created_at": "2025-10-23T20:00:00.000Z"
-    }
-  ],
-  "count": 1,
-  "query": "milk"
+  "message": "List deleted successfully"
 }
 ```
 
@@ -368,8 +423,8 @@ curl http://localhost:3001/api/stats
   "data": {
     "total_lists": 10,
     "total_items": 45,
-    "active_items": 30,
     "completed_items": 15,
+    "pending_items": 30,
     "categories": [
       { "category": "groceries", "count": 20 },
       { "category": "tasks", "count": 15 },
@@ -425,6 +480,14 @@ When an error occurs, the API returns:
 }
 ```
 
+**Database error:**
+```json
+{
+  "success": false,
+  "error": "Failed to create list in AgentDB"
+}
+```
+
 ---
 
 ## Data Models
@@ -436,14 +499,14 @@ When an error occurs, the API returns:
   id: number;
   list_id: number;
   item_name: string;
-  category: 'groceries' | 'tasks' | 'contacts' | 'events' | 'inventory' | 'ideas' | 'recipes' | 'shopping' | 'bills' | 'other';
+  category: string;
   quantity: string | null;
-  priority: 'low' | 'medium' | 'high';
   notes: string | null;
-  status: 'active' | 'completed';
-  completed_at: string | null;  // ISO 8601 timestamp
-  created_at: string;            // ISO 8601 timestamp
-  updated_at: string;            // ISO 8601 timestamp
+  explanation: string | null;
+  status: 'pending' | 'completed';
+  source_type: 'photo' | 'screenshot' | 'pdf' | 'audio' | 'url';
+  extracted_at: string;  // ISO 8601 timestamp
+  metadata: JSON | null;
 }
 ```
 
@@ -452,11 +515,26 @@ When an error occurs, the API returns:
 ```typescript
 {
   id: number;
-  source_type: 'image' | 'text' | 'pdf' | 'url';
-  source_metadata: string | null;  // JSON string
-  created_at: string;              // ISO 8601 timestamp
-  updated_at: string;              // ISO 8601 timestamp
+  list_name: string;
+  description: string | null;
+  created_at: string;  // ISO 8601 timestamp
+  updated_at: string;  // ISO 8601 timestamp
   item_count: number;
+}
+```
+
+### Statistics
+
+```typescript
+{
+  total_lists: number;
+  total_items: number;
+  completed_items: number;
+  pending_items: number;
+  categories: Array<{
+    category: string;
+    count: number;
+  }>;
 }
 ```
 
@@ -468,7 +546,7 @@ Currently, there are no rate limits. In production, implement rate limiting to p
 
 ## CORS
 
-CORS is configured to allow requests from `FRONTEND_URL` environment variable (default: `http://localhost:3000`).
+CORS is configured to allow requests from the frontend URL (default: `http://localhost:3000`).
 
 For production, update the CORS configuration in `backend/src/server.js`.
 
@@ -483,3 +561,33 @@ Import this Postman collection to test all endpoints:
 3. Import endpoints from this documentation
 
 Or use the example cURL commands provided above.
+
+---
+
+## Development Notes
+
+### File Upload Limits
+- Maximum file size: 10MB
+- Supported formats: JPEG, PNG, GIF, WebP
+- Files are temporarily stored in `backend/uploads/`
+
+### Database Operations
+- All database operations use AgentDB with MCP protocol
+- Transactions are handled automatically
+- Data is persisted across server restarts
+
+### AI Processing
+- Image analysis uses OpenAI GPT-4 Vision API
+- Text analysis uses OpenAI GPT-4 API
+- Processing time varies based on content complexity
+- Rate limits apply based on OpenAI account tier
+
+---
+
+## Support
+
+For API issues:
+- Check the main [README.md](../README.md) for setup instructions
+- Review error messages in the terminal
+- Check browser console for frontend errors
+- Verify all environment variables are set correctly

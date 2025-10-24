@@ -1,4 +1,4 @@
-import { analyzeImage, analyzeText } from '../services/imageAnalysisService.js';
+import { analyzeImage, analyzeText, analyzeLink } from '../services/imageAnalysisService.js';
 import {
   saveListItems,
   getLists,
@@ -7,7 +7,8 @@ import {
   deleteListItem,
   searchListItems,
   getStatistics,
-} from '../services/agentdbMCPService.js';
+  executeQuery,
+} from '../services/agentdbService.js';
 import fs from 'fs';
 
 /**
@@ -28,19 +29,15 @@ export async function uploadImage(req, res) {
     console.log('Analyzing image:', imagePath);
     const extractedItems = await analyzeImage(imagePath);
 
-    // Save to database
-    const savedList = await saveListItems(extractedItems, 'image', {
-      originalName: req.file.originalname,
-      size: req.file.size,
-      mimeType: req.file.mimetype,
-    });
-
     // Clean up uploaded file
     fs.unlinkSync(imagePath);
 
     res.json({
       success: true,
-      data: savedList,
+      data: {
+        items: extractedItems,
+        itemCount: extractedItems.length
+      },
       message: `Successfully extracted ${extractedItems.length} items from image`,
     });
 
@@ -102,6 +99,53 @@ export async function analyzeTextInput(req, res) {
 }
 
 /**
+ * Analyze a URL to extract list items
+ */
+export async function analyzeLinkInput(req, res) {
+  try {
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'URL is required',
+      });
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch (urlError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid URL format',
+      });
+    }
+
+    // Analyze the URL
+    console.log('Analyzing URL:', url);
+    const extractedItems = await analyzeLink(url);
+
+    res.json({
+      success: true,
+      data: {
+        items: extractedItems,
+        itemCount: extractedItems.length,
+        url: url
+      },
+      message: `Successfully extracted ${extractedItems.length} items from URL`,
+    });
+
+  } catch (error) {
+    console.error('Error in analyzeLinkInput:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process URL',
+    });
+  }
+}
+
+/**
  * Get all lists
  */
 export async function getAllLists(req, res) {
@@ -138,12 +182,30 @@ export async function getListById(req, res) {
       });
     }
 
+    // Get the list information first
+    const lists = await getLists();
+    const list = lists.find(l => l.id === listId);
+    
+    if (!list) {
+      return res.status(404).json({
+        success: false,
+        error: 'List not found',
+      });
+    }
+
+    // Get items for this specific list
     const items = await getListItems(listId);
 
     res.json({
       success: true,
       data: {
-        listId,
+        id: list.id,
+        listId: list.id,
+        list_name: list.list_name,
+        listName: list.list_name,
+        description: list.description,
+        created_at: list.created_at,
+        updated_at: list.updated_at,
         items,
         count: items.length,
       },
@@ -269,6 +331,257 @@ export async function getStats(req, res) {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch statistics',
+    });
+  }
+}
+
+/**
+ * Save items to an existing list
+ */
+export async function saveItemsToList(req, res) {
+  try {
+    const listId = parseInt(req.params.id);
+    const { items, listName } = req.body;
+
+    if (isNaN(listId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid list ID',
+      });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Items array is required and must not be empty',
+      });
+    }
+
+    // If listName is provided, update the list name
+    if (listName) {
+      const updateListQuery = `
+        UPDATE lists 
+        SET list_name = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `;
+      await executeQuery(updateListQuery, [listName, listId]);
+    }
+
+    // Insert items into the existing list
+    const itemInserts = items.map(async (item) => {
+      const itemQuery = `
+        INSERT INTO list_items (
+          list_id, item_name, category, quantity,
+          notes, explanation, status, source_type,
+          extracted_at, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'), ?)
+      `;
+      
+      return executeQuery(itemQuery, [
+        listId,
+        item.item_name,
+        item.category || 'other',
+        item.quantity,
+        item.notes,
+        item.explanation || null,
+        item.source_type || 'manual',
+        item.metadata ? JSON.stringify(item.metadata) : null
+      ]);
+    });
+
+    await Promise.all(itemInserts);
+
+    // Get updated list with items
+    const updatedList = await getListItems(listId);
+
+    res.json({
+      success: true,
+      data: {
+        listId,
+        itemCount: items.length,
+        totalItems: updatedList.length,
+        items: items,
+        message: `Successfully added ${items.length} items to list`
+      },
+    });
+
+  } catch (error) {
+    console.error('Error in saveItemsToList:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to save items to list',
+    });
+  }
+}
+
+/**
+ * Create a new list with items
+ */
+export async function createNewList(req, res) {
+  try {
+    const { listName, description, items } = req.body;
+
+    if (!listName || !listName.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'List name is required',
+      });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Items array is required and must not be empty',
+      });
+    }
+
+    // Create new list
+    const createListQuery = `
+      INSERT INTO lists (list_name, description, created_at, updated_at)
+      VALUES (?, ?, datetime('now'), datetime('now'))
+      RETURNING id
+    `;
+    
+    const listResult = await executeQuery(createListQuery, [
+      listName.trim(),
+      description || `Items extracted from ${items[0]?.source_type || 'manual'} source`
+    ]);
+
+    console.log('List creation result:', JSON.stringify(listResult, null, 2));
+    
+    // Handle different response structures
+    let listId;
+    if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].id) {
+      listId = listResult.results[0].rows[0].id;
+    } else if (listResult.results && listResult.results[0] && listResult.results[0].lastInsertRowid) {
+      listId = listResult.results[0].lastInsertRowid;
+    } else if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].lastInsertRowid) {
+      listId = listResult.results[0].rows[0].lastInsertRowid;
+    } else if (listResult.lastInsertRowid) {
+      listId = listResult.lastInsertRowid;
+    }
+    
+    console.log('Extracted listId:', listId);
+    
+    if (!listId) {
+      console.error('Failed to extract listId from result:', listResult);
+      throw new Error('Failed to create list');
+    }
+
+    // Insert items into the new list
+    const itemInserts = items.map(async (item) => {
+      const itemQuery = `
+        INSERT INTO list_items (
+          list_id, item_name, category, quantity,
+          notes, explanation, status, source_type,
+          extracted_at, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'), ?)
+      `;
+      
+      // Map source_type to valid values
+      let validSourceType = 'photo'; // default
+      if (item.source_type === 'image' || item.source_type === 'manual') {
+        validSourceType = 'photo';
+      } else if (item.source_type === 'screenshot') {
+        validSourceType = 'screenshot';
+      } else if (item.source_type === 'pdf') {
+        validSourceType = 'pdf';
+      } else if (item.source_type === 'url') {
+        validSourceType = 'url';
+      } else if (item.source_type === 'audio') {
+        validSourceType = 'audio';
+      }
+
+      return executeQuery(itemQuery, [
+        listId,
+        item.item_name,
+        item.category || 'other',
+        item.quantity,
+        item.notes,
+        item.explanation || null,
+        validSourceType,
+        item.metadata ? JSON.stringify(item.metadata) : null
+      ]);
+    });
+
+    await Promise.all(itemInserts);
+
+    // Get the created list with items
+    const newList = await getListItems(listId);
+
+    res.json({
+      success: true,
+      data: {
+        id: listId,
+        listId: listId,
+        list_name: listName.trim(),
+        listName: listName.trim(),
+        itemCount: items.length,
+        totalItems: newList.length,
+        items: items,
+        message: `Successfully created new list "${listName.trim()}" with ${items.length} items`
+      },
+    });
+
+  } catch (error) {
+    console.error('Error in createNewList:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create new list',
+    });
+  }
+}
+
+/**
+ * Delete a list and all its items
+ */
+export async function deleteList(req, res) {
+  try {
+    const listId = parseInt(req.params.id);
+
+    if (isNaN(listId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid list ID',
+      });
+    }
+
+    // First, delete all items in the list
+    const deleteItemsQuery = `
+      DELETE FROM list_items 
+      WHERE list_id = ?
+    `;
+    await executeQuery(deleteItemsQuery, [listId]);
+
+    // Then delete the list itself
+    const deleteListQuery = `
+      DELETE FROM lists 
+      WHERE id = ?
+    `;
+    const result = await executeQuery(deleteListQuery, [listId]);
+
+    if (result.results?.[0]?.changes === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'List not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        listId,
+        message: 'List and all its items deleted successfully'
+      },
+    });
+
+  } catch (error) {
+    console.error('Error in deleteList:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete list',
     });
   }
 }

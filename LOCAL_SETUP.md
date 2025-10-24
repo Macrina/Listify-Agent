@@ -1,301 +1,435 @@
-# Local Setup Instructions
+# Local Development Setup
 
-Your Listify Agent is configured and ready! Since the Claude Code environment has network restrictions, you'll need to complete these final steps on your **local machine**.
+This guide covers setting up Listify Agent for local development on your machine.
 
-## ✅ What's Already Done
+## 🎯 Prerequisites
 
-- ✅ Project structure created
-- ✅ All dependencies installed (backend + frontend)
-- ✅ Credentials configured in `.env` file
-- ✅ Code is ready to run
+### System Requirements
+- **Node.js** (v18 or higher)
+- **npm** (v8 or higher) or **yarn**
+- **Git** for version control
+- **Code Editor** (VS Code recommended)
 
-## 🚀 Final Steps (On Your Local Machine)
+### Required Accounts
+- **OpenAI Account** with GPT-4 Vision access
+- **AgentDB Account** for database services
 
-### Step 1: Clone/Pull the Repository
+## 🚀 Initial Setup
 
-If you haven't already, clone or pull the latest changes:
+### Step 1: Clone the Repository
 
 ```bash
+# Clone the repository
 git clone <your-repo-url>
 cd Listify-Agent
 
-# Or if already cloned:
-git pull origin claude/ai-model-integration-011CUQjwzZgGYSpyoFbvadrR
+# Check out the correct branch (if applicable)
+git checkout main
 ```
 
-### Step 2: Set Up AgentDB Database Schema
-
-You need to create the database tables in your AgentDB dashboard.
-
-**Option A: Using the SQL File**
-
-1. Open the file: `backend/schema.sql`
-2. Copy the entire SQL content
-3. Go to your AgentDB dashboard
-4. Navigate to the SQL query interface
-5. Paste and execute the SQL
-
-**Option B: Run the Setup Script**
+### Step 2: Install Dependencies
 
 ```bash
-cd backend
-node setup-database.js
-```
-
-This will automatically create all tables and indexes.
-
-**Expected Output:**
-```
-✅ Lists table created!
-✅ List_items table created!
-✅ Indexes created!
-```
-
-### Step 3: Verify Your .env File
-
-Make sure your `.env` file in the project root has your credentials:
-
-```bash
-cat .env
-```
-
-Should show:
-```env
-OPENAI_API_KEY=sk-proj-H8yT2XfrPbee...
-AGENTDB_API_KEY=agentdb_6b1c89b01d71...
-AGENTDB_TOKEN=afa28f11-dc05-4cae-9e4c-4bdad802d4c8
-AGENTDB_DB_NAME=listify-agent
-```
-
-### Step 4: Install Dependencies (if needed)
-
-If you just cloned fresh, install dependencies:
-
-```bash
+# Install all dependencies (recommended)
 npm run install:all
-```
 
-Or install separately:
-```bash
+# Or install individually
 cd backend && npm install
 cd ../frontend && npm install
 ```
 
-### Step 5: Run the Application
-
-From the project root:
+### Step 3: Environment Configuration
 
 ```bash
-npm run dev
+# Copy environment template
+cp .env.example .env
+
+# Edit with your credentials
+code .env  # or use your preferred editor
 ```
 
-This starts both backend (port 3001) and frontend (port 3000).
-
-**Or run separately:**
-
-Terminal 1 - Backend:
-```bash
-npm run backend:dev
-```
-
-Terminal 2 - Frontend:
-```bash
-npm run frontend:dev
-```
-
-### Step 6: Test the Application
-
-1. **Open your browser**: http://localhost:3000
-
-2. **Test Text Analysis** (easier first test):
-   - Click "Analyze Text" tab
-   - Paste this sample text:
-     ```
-     Buy milk
-     Call dentist
-     Finish project report by Friday
-     ```
-   - Click "Analyze Text"
-   - You should see 3 extracted items!
-
-3. **Test Image Upload**:
-   - Click "Upload Image" tab
-   - Take a photo of a handwritten list or upload a screenshot
-   - Click "Upload & Analyze"
-   - Watch the AI extract your list items!
-
-4. **Check Your Lists**:
-   - Click "My Lists" tab
-   - Expand a list to see items
-   - Check off completed items
-   - Delete items
-
-5. **View Statistics**:
-   - Click "Statistics" tab
-   - See your analytics
-
-## 🧪 Troubleshooting
-
-### OpenAI API Issues
-
-If you get OpenAI errors:
+### Step 4: Database Setup
 
 ```bash
-# Test your OpenAI key
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer YOUR_OPENAI_KEY"
+# Set up the database schema
+cd backend
+node setup-database.js
 ```
 
-**Common issues:**
-- Key is invalid or expired → Get a new key from https://platform.openai.com/api-keys
-- No GPT-4 access → Check your OpenAI account tier
-- Billing issues → Add credits to your OpenAI account
-
-### AgentDB Issues
-
-If you get AgentDB errors:
-
-```bash
-# Test your AgentDB connection
-node backend/test-config.js
+Expected output:
+```
+✅ Database connection successful
+✅ Lists table created
+✅ List items table created
+✅ Indexes created
+✅ Database setup complete
 ```
 
-**Common issues:**
-- Wrong credentials → Double-check your AgentDB dashboard
-- Database not created → Create the database first
-- Schema not set up → Run `backend/schema.sql` in AgentDB
+## 🔧 Development Environment
 
-### Port Already in Use
+### Port Configuration
 
-If ports 3000 or 3001 are busy:
+The application uses these ports by default:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:3001
 
-**Backend** - Edit `.env`:
+### Environment Variables
+
+Create a `.env` file in the project root:
+
 ```env
-PORT=4001
+# OpenAI Configuration
+OPENAI_API_KEY=sk-proj-your-openai-api-key-here
+
+# AgentDB Configuration
+AGENTDB_MCP_URL=https://mcp.agentdb.dev/your-endpoint
+AGENTDB_API_KEY=your-agentdb-api-key-here
+AGENTDB_DB_NAME=listify-agent
+
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Optional: Debug settings
+DEBUG=*
+LOG_LEVEL=debug
 ```
 
-**Frontend** - Edit `frontend/vite.config.js`:
-```javascript
-server: {
-  port: 4000,
+### Development Scripts
+
+```bash
+# Start both frontend and backend
+npm run dev
+
+# Start services separately
+npm run backend:dev    # Backend only
+npm run frontend:dev   # Frontend only
+
+# Build for production
+npm run build
+
+# Run tests
+npm test
+```
+
+## 🧪 Testing Your Setup
+
+### 1. Health Check
+
+```bash
+# Test backend API
+curl http://localhost:3001/api/health
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "message": "Listify Agent API is running",
+  "timestamp": "2025-01-23T..."
 }
 ```
 
-### Module Not Found Errors
-
-If you get "Cannot find module" errors:
+### 2. Text Analysis Test
 
 ```bash
-# Reinstall dependencies
+# Test text analysis
+curl -X POST http://localhost:3001/api/analyze-text \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Buy milk\nCall dentist\nFinish report"}'
+```
+
+### 3. Frontend Test
+
+1. Open http://localhost:3000
+2. Navigate through all tabs
+3. Test text analysis with sample data
+4. Test image upload (if you have test images)
+5. Check "My Lists" section
+6. View statistics
+
+## 🔍 Development Tools
+
+### VS Code Extensions (Recommended)
+
+```json
+{
+  "recommendations": [
+    "ms-vscode.vscode-typescript-next",
+    "bradlc.vscode-tailwindcss",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-eslint",
+    "ms-vscode.vscode-json"
+  ]
+}
+```
+
+### Debug Configuration
+
+Create `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Backend",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/src/server.js",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}
+```
+
+### Git Hooks (Optional)
+
+```bash
+# Install husky for git hooks
+npm install --save-dev husky
+
+# Set up pre-commit hook
+npx husky install
+npx husky add .husky/pre-commit "npm run lint"
+```
+
+## 🛠️ Development Workflow
+
+### Daily Development
+
+1. **Start the development servers**
+   ```bash
+   npm run dev
+   ```
+
+2. **Make your changes**
+   - Edit frontend components in `frontend/src/`
+   - Edit backend logic in `backend/src/`
+   - Update styles in `frontend/src/styles/`
+
+3. **Test your changes**
+   - Frontend changes auto-reload
+   - Backend changes require restart
+   - Test both text and image analysis
+
+4. **Commit your changes**
+   ```bash
+   git add .
+   git commit -m "Your commit message"
+   git push origin your-branch
+   ```
+
+### Code Quality
+
+```bash
+# Run linting
+npm run lint
+
+# Format code
+npm run format
+
+# Run tests
+npm test
+
+# Check for security vulnerabilities
+npm audit
+```
+
+## 🐛 Debugging
+
+### Backend Debugging
+
+**Enable debug logging:**
+```bash
+DEBUG=* npm run backend:dev
+```
+
+**Common debug scenarios:**
+- API request/response logging
+- Database query logging
+- OpenAI API call logging
+- Error stack traces
+
+### Frontend Debugging
+
+**Browser DevTools:**
+- Open DevTools (F12)
+- Check Console for errors
+- Monitor Network tab for API calls
+- Use React DevTools extension
+
+**React DevTools:**
+```bash
+# Install React DevTools browser extension
+# Available for Chrome, Firefox, Safari
+```
+
+### Database Debugging
+
+**Check database connection:**
+```bash
+cd backend
+node -e "
+import { agentdbConfig } from './src/config/agentdb.js';
+console.log('AgentDB Config:', agentdbConfig);
+"
+```
+
+**Test database queries:**
+```bash
+cd backend
+node test-database.js
+```
+
+## 📊 Performance Monitoring
+
+### Development Metrics
+
+**Backend Performance:**
+- API response times
+- Database query execution
+- Memory usage
+- Error rates
+
+**Frontend Performance:**
+- Component render times
+- Bundle size
+- Network requests
+- User interactions
+
+### Performance Tools
+
+```bash
+# Analyze bundle size
+npm run build
+npm run analyze
+
+# Monitor memory usage
+node --inspect backend/src/server.js
+```
+
+## 🔒 Security Considerations
+
+### Development Security
+
+1. **Environment Variables**
+   - Never commit `.env` files
+   - Use `.env.example` as template
+   - Rotate API keys regularly
+
+2. **Input Validation**
+   - Validate all user inputs
+   - Sanitize file uploads
+   - Check file types and sizes
+
+3. **API Security**
+   - Implement rate limiting
+   - Add request validation
+   - Monitor for suspicious activity
+
+### Security Checklist
+
+- [ ] `.env` file is in `.gitignore`
+- [ ] API keys are not hardcoded
+- [ ] File upload validation is enabled
+- [ ] CORS is properly configured
+- [ ] Input sanitization is implemented
+
+## 🚀 Deployment Preparation
+
+### Production Build
+
+```bash
+# Build for production
+npm run build
+
+# Test production build locally
+npm run backend:start
+```
+
+### Environment Configuration
+
+**Production `.env`:**
+```env
+NODE_ENV=production
+PORT=3001
+# ... production settings
+```
+
+**Staging `.env`:**
+```env
+NODE_ENV=staging
+PORT=3001
+# ... staging settings
+```
+
+## 📚 Additional Resources
+
+### Documentation
+- [Main README](README.md)
+- [Setup Guide](SETUP.md)
+- [API Documentation](docs/API.md)
+- [Requirements](REQUIREMENTS.md)
+
+### External Resources
+- [Node.js Documentation](https://nodejs.org/docs/)
+- [React Documentation](https://react.dev/)
+- [OpenAI API Documentation](https://platform.openai.com/docs/)
+- [AgentDB Documentation](https://agentdb.dev/docs)
+
+### Community
+- [GitHub Issues](https://github.com/your-repo/issues)
+- [Discord Community](https://discord.gg/your-community)
+- [Stack Overflow](https://stackoverflow.com/questions/tagged/listify-agent)
+
+## 🆘 Getting Help
+
+### Common Issues
+
+**Port conflicts:**
+```bash
+# Check what's using the ports
+lsof -i :3000
+lsof -i :3001
+
+# Kill processes if needed
+kill -9 <PID>
+```
+
+**Module not found:**
+```bash
+# Clear node_modules and reinstall
 rm -rf node_modules backend/node_modules frontend/node_modules
 npm run install:all
 ```
 
-## 📊 Expected Behavior
-
-### When You Upload an Image:
-
-1. Image is analyzed by GPT-4 Vision
-2. AI extracts list items with:
-   - Item name
-   - Category (auto-detected)
-   - Quantity (if visible)
-   - Priority (estimated)
-   - Notes (additional context)
-3. Items are saved to AgentDB
-4. Results are displayed immediately
-
-### When You Analyze Text:
-
-1. Text is parsed by GPT-4
-2. List items are extracted and structured
-3. Same categorization as images
-4. Items saved to database
-
-### Database Structure:
-
-**lists table:**
-- Stores metadata about each list
-- Tracks source type (image/text)
-- Counts items
-
-**list_items table:**
-- Stores individual items
-- Links to parent list
-- Tracks completion status
-- Includes all item details
-
-## 🎯 Next Steps After Setup
-
-Once everything is working:
-
-1. **Test with Real Data**:
-   - Upload your grocery lists
-   - Take photos of handwritten notes
-   - Paste meeting notes
-
-2. **Explore Features**:
-   - Search across all lists
-   - Mark items as complete
-   - View statistics
-   - Delete old items
-
-3. **Customize**:
-   - Modify categories (backend/src/services/imageAnalysisService.js)
-   - Adjust AI prompts for better extraction
-   - Add new features
-
-4. **Deploy** (when ready):
-   - See README.md for production deployment
-   - Consider hosting on Vercel, Railway, or Heroku
-
-## 📝 Quick Reference
-
-### Start Development
+**Database connection issues:**
 ```bash
-npm run dev
+# Test database connection
+cd backend
+node test-database.js
 ```
 
-### Start Production
-```bash
-npm run build
-npm run backend:start
-```
-
-### Run Tests
-```bash
-node backend/test-config.js
-```
-
-### Setup Database
-```bash
-node backend/setup-database.js
-```
-
-### View Logs
-Backend logs show:
-- API requests
-- OpenAI API calls
-- Database queries
-- Errors
-
-## 🆘 Getting Help
-
-If you run into issues:
+### Support Channels
 
 1. **Check the logs** in your terminal
 2. **Check browser console** (F12 in browser)
 3. **Review error messages** - they're usually helpful
 4. **Check the main README.md** for detailed documentation
-5. **Review docs/API.md** for API documentation
+5. **Create an issue** on GitHub if you're stuck
 
-## 🎉 You're All Set!
+## 🎉 You're Ready to Develop!
 
-Your Listify Agent is ready to go. Just need to:
+Your local development environment is now set up. You can:
 
-1. ✅ Pull the code to your local machine
-2. ✅ Run the database setup
-3. ✅ Start the application with `npm run dev`
-4. ✅ Open http://localhost:3000
+1. ✅ Make changes to the code
+2. ✅ Test your changes in real-time
+3. ✅ Debug issues effectively
+4. ✅ Contribute to the project
+5. ✅ Deploy when ready
 
-Enjoy your AI-powered list extraction tool! 🚀
+Happy coding! 🚀

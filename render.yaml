@@ -4,7 +4,7 @@ services:
     name: listify-agent
     env: node
     plan: starter
-    buildCommand: ./build.sh
+    buildCommand: cd backend && npm install && cd ../frontend && npm install && npx vite build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV

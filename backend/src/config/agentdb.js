@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
 config({ path: join(__dirname, '../../.env') });
 
 export const agentdbConfig = {
-  mcpUrl: process.env.AGENTDB_MCP_URL || 'https://mcp.agentdb.dev/eq1MHpX-qn',
-  apiKey: process.env.AGENTDB_API_KEY || 'your-api-key-here',
+  mcpUrl: process.env.AGENTDB_MCP_URL || 'https://mcp.agentdb.dev/LW-aEoVKYL',
+  apiKey: process.env.AGENTDB_API_KEY || 'dummy-key-for-build',
   dbName: process.env.AGENTDB_DB_NAME || 'listify-agent'
 };

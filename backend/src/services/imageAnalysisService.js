@@ -6,17 +6,26 @@ import fetch from 'node-fetch';
 
 /**
  * Analyzes an image and extracts list items using OpenAI Vision
- * @param {string} imagePath - Path to the image file
+ * @param {Buffer|string} imageData - Image buffer or file path
+ * @param {string} mimeType - MIME type of the image
  * @returns {Promise<Array>} - Array of extracted list items
  */
-export async function analyzeImage(imagePath) {
+export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
   try {
-    // Read the image file
-    const imageBuffer = fs.readFileSync(imagePath);
+    // Handle both buffer (production) and file path (development)
+    let imageBuffer;
+    if (Buffer.isBuffer(imageData)) {
+      // Buffer from memory storage (production)
+      imageBuffer = imageData;
+    } else {
+      // File path from disk storage (development)
+      imageBuffer = fs.readFileSync(imageData);
+    }
+    
     const base64Image = imageBuffer.toString('base64');
 
-    // Determine the image type
-    const imageType = imagePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    // Use provided mimeType or determine from file extension
+    const imageType = mimeType || (typeof imageData === 'string' && imageData.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
     // Create the prompt for list extraction
     const prompt = `You are an expert at extracting and structuring information from images.

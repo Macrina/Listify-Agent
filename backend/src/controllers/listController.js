@@ -23,14 +23,29 @@ export async function uploadImage(req, res) {
       });
     }
 
-    const imagePath = req.file.path;
+    // Handle both memory storage (production) and disk storage (development)
+    let imageData;
+    if (req.file.buffer) {
+      // Memory storage (production/Render)
+      imageData = req.file.buffer;
+    } else {
+      // Disk storage (development)
+      const imagePath = req.file.path;
+      imageData = fs.readFileSync(imagePath);
+    }
 
     // Analyze the image
-    console.log('Analyzing image:', imagePath);
-    const extractedItems = await analyzeImage(imagePath);
+    console.log('Analyzing image:', req.file.originalname);
+    const extractedItems = await analyzeImage(imageData, req.file.mimetype);
 
-    // Clean up uploaded file
-    fs.unlinkSync(imagePath);
+    // Clean up uploaded file (only for disk storage)
+    if (req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        console.error('Error deleting file:', unlinkError);
+      }
+    }
 
     res.json({
       success: true,
@@ -44,7 +59,7 @@ export async function uploadImage(req, res) {
   } catch (error) {
     console.error('Error in uploadImage:', error);
 
-    // Clean up file if it exists
+    // Clean up file if it exists (only for disk storage)
     if (req.file && req.file.path) {
       try {
         fs.unlinkSync(req.file.path);

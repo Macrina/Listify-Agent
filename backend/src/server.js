@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import listRoutes from './routes/listRoutes.js';
 
 // Load environment variables
@@ -9,6 +11,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Middleware
 app.use(cors({
@@ -27,24 +33,35 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Routes
 app.use('/api', listRoutes);
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Welcome to Listify Agent API',
-    version: '1.0.0',
-    endpoints: {
-      health: '/api/health',
-      uploadImage: 'POST /api/upload',
-      analyzeText: 'POST /api/analyze-text',
-      getLists: 'GET /api/lists',
-      getList: 'GET /api/lists/:id',
-      updateItem: 'PUT /api/items/:id',
-      deleteItem: 'DELETE /api/items/:id',
-      search: 'GET /api/search?q=keyword',
-      stats: 'GET /api/stats',
-    },
+// Serve static files from frontend build in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendPath));
+  
+  // Serve frontend for all non-API routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
   });
-});
+} else {
+  // Development root endpoint
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'Welcome to Listify Agent API',
+      version: '1.0.0',
+      endpoints: {
+        health: '/api/health',
+        uploadImage: 'POST /api/upload',
+        analyzeText: 'POST /api/analyze-text',
+        getLists: 'GET /api/lists',
+        getList: 'GET /api/lists/:id',
+        updateItem: 'PUT /api/items/:id',
+        deleteItem: 'DELETE /api/items/:id',
+        search: 'GET /api/search?q=keyword',
+        stats: 'GET /api/stats',
+      },
+    });
+  });
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {

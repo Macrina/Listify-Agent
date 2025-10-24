@@ -1,10 +1,10 @@
 services:
-  # Backend API Service
+  # Single Web Service (Backend + Frontend)
   - type: web
-    name: listify-agent-backend
+    name: listify-agent
     env: node
     plan: starter
-    buildCommand: cd backend && npm install
+    buildCommand: npm install && cd frontend && npm install && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -20,15 +20,4 @@ services:
       - key: AGENTDB_DB_NAME
         value: listify-agent
     healthCheckPath: /api/health
-    autoDeploy: true
-
-  # Frontend Service
-  - type: web
-    name: listify-agent-frontend
-    env: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://listify-agent-backend.onrender.com/api
     autoDeploy: true

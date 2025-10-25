@@ -258,13 +258,21 @@ Return ONLY a valid JSON array of objects.`;
           try {
             console.log('Attempting Puppeteer navigation...');
             
+            // Suppress Puppeteer performance warnings
+            process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+            process.env.PUPPETEER_SKIP_DOWNLOAD = 'true';
+            
             // Check architecture and provide performance guidance
             const isAppleSilicon = process.platform === 'darwin' && process.arch === 'arm64';
             const isIntelMac = process.platform === 'darwin' && process.arch === 'x64';
+            const isRunningUnderRosetta = process.platform === 'darwin' && process.arch === 'x64' && process.env.ARCH === 'i386';
             
             if (isAppleSilicon && process.arch !== 'arm64') {
               console.warn('⚠️  Performance Warning: Running Puppeteer on Apple Silicon with x64 Node.js may cause performance issues.');
               console.warn('💡 Consider using ARM64 Node.js for better performance: nvm install node --latest-npm');
+            } else if (isRunningUnderRosetta) {
+              console.warn('⚠️  Performance Warning: Running under Rosetta translation may cause performance issues.');
+              console.warn('💡 For optimal performance, install ARM64 Node.js: brew install node');
             } else if (isIntelMac) {
               console.log('✅ Running on Intel Mac - performance should be optimal');
             }
@@ -272,6 +280,8 @@ Return ONLY a valid JSON array of objects.`;
             // Launch browser with optimized configuration for better performance
             const browser = await puppeteer.launch({
               headless: true,
+              // Suppress Puppeteer performance warnings
+              ignoreDefaultArgs: ['--disable-extensions', '--disable-background-timer-throttling'],
               args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

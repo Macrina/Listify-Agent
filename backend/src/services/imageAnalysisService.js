@@ -3,6 +3,7 @@ import fs from 'fs';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
+import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteerConfig.js';
 
 /**
  * Analyzes an image and extracts list items using OpenAI Vision
@@ -253,34 +254,72 @@ Return ONLY a valid JSON array of objects.`;
 
            let title, content;
            
-           // Try Puppeteer first, fallback to HTTP request if it fails
-           try {
-             console.log('Attempting Puppeteer navigation...');
+          // Try Puppeteer first, fallback to HTTP request if it fails
+          try {
+            console.log('Attempting Puppeteer navigation...');
+            
+            // Check architecture and provide performance guidance
+            const isAppleSilicon = process.platform === 'darwin' && process.arch === 'arm64';
+            const isIntelMac = process.platform === 'darwin' && process.arch === 'x64';
+            
+            if (isAppleSilicon && process.arch !== 'arm64') {
+              console.warn('⚠️  Performance Warning: Running Puppeteer on Apple Silicon with x64 Node.js may cause performance issues.');
+              console.warn('💡 Consider using ARM64 Node.js for better performance: nvm install node --latest-npm');
+            } else if (isIntelMac) {
+              console.log('✅ Running on Intel Mac - performance should be optimal');
+            }
              
-             // Launch browser and get page content
-             const browser = await puppeteer.launch({
-               headless: true,
-               args: [
-                 '--no-sandbox',
-                 '--disable-setuid-sandbox',
-                 '--disable-dev-shm-usage',
-                 '--disable-accelerated-2d-canvas',
-                 '--no-first-run',
-                 '--no-zygote',
-                 '--disable-gpu',
-                 '--disable-web-security',
-                 '--disable-features=VizDisplayCompositor',
-                 '--disable-extensions',
-                 '--disable-plugins',
-                 '--disable-images',
-                 '--disable-javascript'
-               ]
-             });
+            // Launch browser with optimized configuration for better performance
+            const browser = await puppeteer.launch({
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-images',
+                '--disable-javascript',
+                // Performance optimizations
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-background-networking',
+                '--disable-sync',
+                '--disable-default-apps',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--single-process', // Use single process for better performance
+                '--memory-pressure-off',
+                '--max_old_space_size=4096' // Increase memory limit
+              ],
+              // Additional performance options
+              timeout: 30000, // 30 second timeout
+              protocolTimeout: 30000,
+              ignoreDefaultArgs: ['--disable-extensions'],
+              ignoreHTTPSErrors: true
+            });
        
              const page = await browser.newPage();
              
              // Set user agent to avoid blocking
              await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+             
+             // Set viewport for consistent rendering
+             await page.setViewport({ width: 1280, height: 720 });
+             
+             // Set page timeouts for better performance
+             page.setDefaultNavigationTimeout(30000);
+             page.setDefaultTimeout(30000);
              
              // Navigate to the URL with better timeout handling
              try {

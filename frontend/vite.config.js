@@ -9,7 +9,7 @@ export default defineConfig({
     host: true, // Allow external connections
     proxy: {
       '/api': {
-        target: 'http://localhost:3002',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
     },

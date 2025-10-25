@@ -12,20 +12,30 @@ import fetch from 'node-fetch';
  */
 export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
   try {
+    console.log('Starting image analysis with:', {
+      isBuffer: Buffer.isBuffer(imageData),
+      mimeType: mimeType,
+      dataSize: Buffer.isBuffer(imageData) ? imageData.length : 'N/A'
+    });
+
     // Handle both buffer (production) and file path (development)
     let imageBuffer;
     if (Buffer.isBuffer(imageData)) {
       // Buffer from memory storage (production)
+      console.log('Processing buffer data (production)');
       imageBuffer = imageData;
     } else {
       // File path from disk storage (development)
+      console.log('Processing file path (development):', imageData);
       imageBuffer = fs.readFileSync(imageData);
     }
     
     const base64Image = imageBuffer.toString('base64');
+    console.log('Image converted to base64, length:', base64Image.length);
 
     // Use provided mimeType or determine from file extension
     const imageType = mimeType || (typeof imageData === 'string' && imageData.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    console.log('Using image type:', imageType);
 
     // Create the prompt for list extraction
     const prompt = `You are an expert at extracting and structuring information from images.
@@ -55,6 +65,7 @@ Example format:
 If no list items are found, return an empty array: []`;
 
     // Call OpenAI Vision API
+    console.log('Calling OpenAI Vision API...');
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -77,6 +88,7 @@ If no list items are found, return an empty array: []`;
       max_tokens: 2000,
       temperature: 0.2, // Lower temperature for more consistent structured output
     });
+    console.log('OpenAI API response received');
 
     // Extract and parse the response
     const content = response.choices[0].message.content;

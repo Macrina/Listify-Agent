@@ -16,27 +16,41 @@ import fs from 'fs';
  */
 export async function uploadImage(req, res) {
   try {
+    console.log('Upload image request received');
+    
     if (!req.file) {
+      console.log('No file provided in request');
       return res.status(400).json({
         success: false,
         error: 'No image file provided',
       });
     }
 
+    console.log('File received:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      hasBuffer: !!req.file.buffer,
+      hasPath: !!req.file.path
+    });
+
     // Handle both memory storage (production) and disk storage (development)
     let imageData;
     if (req.file.buffer) {
       // Memory storage (production/Render)
+      console.log('Using memory storage (production)');
       imageData = req.file.buffer;
     } else {
       // Disk storage (development)
+      console.log('Using disk storage (development)');
       const imagePath = req.file.path;
       imageData = fs.readFileSync(imagePath);
     }
 
     // Analyze the image
-    console.log('Analyzing image:', req.file.originalname);
+    console.log('Starting image analysis for:', req.file.originalname);
     const extractedItems = await analyzeImage(imageData, req.file.mimetype);
+    console.log('Image analysis completed, extracted items:', extractedItems.length);
 
     // Clean up uploaded file (only for disk storage)
     if (req.file.path) {

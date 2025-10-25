@@ -56,4 +56,22 @@ router.get('/health', (req, res) => {
   });
 });
 
+// API configuration check
+router.get('/config', (req, res) => {
+  const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+  const hasAgentDBKey = !!process.env.AGENTDB_API_KEY;
+  const hasAgentDBUrl = !!process.env.AGENTDB_MCP_URL;
+  
+  res.json({
+    success: true,
+    config: {
+      openai: hasOpenAIKey ? 'configured' : 'missing',
+      agentdb: hasAgentDBKey ? 'configured' : 'missing',
+      agentdbUrl: hasAgentDBUrl ? 'configured' : 'missing',
+      environment: process.env.NODE_ENV || 'development'
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
 export default router;

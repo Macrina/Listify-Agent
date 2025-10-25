@@ -5,26 +5,23 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import listRoutes from './routes/listRoutes.js';
+import getPortConfig from './config/ports.js';
+import { getCorsConfig } from './config/cors.js';
+import { getPortWithFallback } from './utils/portUtils.js';
+import { healthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const portConfig = getPortConfig();
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Middleware
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://listify-agent-frontend.onrender.com',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
-  credentials: true,
-}));
+app.use(cors(getCorsConfig()));
 
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' }));
@@ -32,6 +29,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api', listRoutes);
+
+// Enhanced health endpoints
+app.get('/api/health', healthCheck);
+app.get('/api/health/detailed', detailedHealthCheck);
+app.get('/api/health/readiness', readinessCheck);
+app.get('/api/health/liveness', livenessCheck);
 
 // Serve static files from frontend build in production
 if (process.env.NODE_ENV === 'production') {
@@ -82,23 +85,35 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Start server with port validation
+const startServer = async () => {
+  try {
+    const PORT = await getPortWithFallback(portConfig.backend, portConfig.backend + 1);
+    
+    app.listen(PORT, () => {
+      console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
 ║       🚀  Listify Agent API Server                ║
 ║                                                   ║
 ║       Status: Running                             ║
 ║       Port: ${PORT}                                  ║
-║       Environment: ${process.env.NODE_ENV || 'development'}                    ║
+║       Environment: ${portConfig.environment.padEnd(20)} ║
 ║                                                   ║
 ║       API Docs: http://localhost:${PORT}/            ║
 ║       Health Check: http://localhost:${PORT}/api/health ║
+║       Detailed Health: http://localhost:${PORT}/api/health/detailed ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {

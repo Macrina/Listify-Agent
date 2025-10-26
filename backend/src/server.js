@@ -8,13 +8,24 @@ import listRoutes from './routes/listRoutes.js';
 import getPortConfig from './config/ports.js';
 import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
-import { healthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
+import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
 
 // Load environment variables
 dotenv.config();
 
+// Log environment info for debugging
+console.log('🔧 Environment Info:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  NODE_VERSION: process.version,
+  PLATFORM: process.platform,
+  ARCH: process.arch
+});
+
 const app = express();
 const portConfig = getPortConfig();
+
+console.log('🔧 Port Config:', portConfig);
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +42,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api', listRoutes);
 
 // Enhanced health endpoints
-app.get('/api/health', healthCheck);
+app.get('/api/health', basicHealthCheck); // Simple health check for Render
 app.get('/api/health/detailed', detailedHealthCheck);
 app.get('/api/health/readiness', readinessCheck);
 app.get('/api/health/liveness', livenessCheck);
@@ -39,12 +50,16 @@ app.get('/api/health/liveness', livenessCheck);
 // Serve static files from frontend build in production
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '../../frontend/dist');
+  
+  // Try to serve frontend build (will fail gracefully if not found)
   app.use(express.static(frontendPath));
   
   // Serve frontend for all non-API routes
   app.get('*', (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
   });
+  
+  console.log('✅ Production mode: serving frontend from', frontendPath);
 } else {
   // Development root endpoint
   app.get('/', (req, res) => {
@@ -88,9 +103,12 @@ app.use((req, res) => {
 // Start server with port validation
 const startServer = async () => {
   try {
-    const PORT = await getPortWithFallback(portConfig.backend, portConfig.backend + 1);
+    // In production, use the exact PORT from environment (required by Render)
+    const PORT = portConfig.isProduction 
+      ? portConfig.backend 
+      : await getPortWithFallback(portConfig.backend, portConfig.backend + 1);
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║

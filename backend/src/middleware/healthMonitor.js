@@ -111,6 +111,20 @@ export const healthCheck = async (req, res) => {
 };
 
 /**
+ * Simple health check for Render deployment
+ */
+export const basicHealthCheck = (req, res) => {
+  res.status(200).json({
+    status: 'UP',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    port: process.env.PORT || '3001',
+    version: '1.0.0',
+    uptime: `${Math.round(process.uptime())}s`
+  });
+};
+
+/**
  * Detailed health check for monitoring systems
  */
 export const detailedHealthCheck = async (req, res) => {

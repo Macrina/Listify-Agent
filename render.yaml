@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 3001
+        value: 3000
       - key: OPENAI_API_KEY
         sync: false  # Will be set in Render dashboard
       - key: AGENTDB_API_KEY

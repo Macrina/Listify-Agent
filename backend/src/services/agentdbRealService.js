@@ -3,6 +3,16 @@
  * This service provides actual database operations using the MCP AgentDB tool
  */
 
+import { 
+  createToolSpan, 
+  addToolCall,
+  setSpanStatus,
+  recordSpanException,
+  addSpanMetadata,
+  addSpanTags,
+  SpanKinds
+} from '../utils/tracing.js';
+
 // Track deleted lists to simulate proper deletion
 const deletedLists = new Set();
 
@@ -19,6 +29,15 @@ const createdListItems = new Map();
  * @returns {Promise<Object>} - Query result
  */
 export async function executeQuery(query, params = []) {
+  // Create tool span for AgentDB query
+  const toolSpan = createToolSpan('agentdb-query', 'executeQuery', { query, params }, {
+    'tool.name': 'AgentDB',
+    'tool.version': '1.0.0',
+    'db.operation': query.trim().split(' ')[0].toUpperCase(),
+    'db.query_length': query.length,
+    'db.param_count': params.length
+  });
+
   try {
     console.log('Executing AgentDB query:', query, params);
     
@@ -409,7 +428,7 @@ export async function executeQuery(query, params = []) {
     }
     
     // Default empty result
-    return {
+    const result = {
       success: true,
       results: [{
         rows: [],
@@ -419,9 +438,29 @@ export async function executeQuery(query, params = []) {
         changes: 0
       }]
     };
+
+    // Complete tool span with success
+    toolSpan.setAttribute('output.value', JSON.stringify(result));
+    addSpanMetadata(toolSpan, {
+      'db.rows_returned': 0,
+      'db.operation_type': 'SELECT'
+    });
+    addSpanTags(toolSpan, ['agentdb', 'database', 'query']);
+    setSpanStatus(toolSpan, true);
+    toolSpan.end();
+
+    return result;
     
   } catch (error) {
     console.error('AgentDB query error:', error.message);
+    
+    // Record error in tool span
+    recordSpanException(toolSpan, error, {
+      'error.stage': 'database_query',
+      'error.source': 'AgentDB'
+    });
+    toolSpan.end();
+    
     throw new Error(`Database query failed: ${error.message}`);
   }
 }

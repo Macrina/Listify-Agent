@@ -4,6 +4,18 @@ import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteerConfig.js';
+import { 
+  createAgentSpan, 
+  createLLMSpan, 
+  createToolSpan, 
+  addLLMInputMessages, 
+  addLLMOutputMessages,
+  setSpanStatus,
+  recordSpanException,
+  addSpanMetadata,
+  addSpanTags,
+  SpanKinds
+} from '../utils/tracing.js';
 
 /**
  * Analyzes an image and extracts list items using OpenAI Vision
@@ -12,6 +24,13 @@ import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteer
  * @returns {Promise<Array>} - Array of extracted list items
  */
 export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
+  // Create agent span for the entire image analysis process
+  const agentSpan = createAgentSpan('analyze-image', 'Image analysis request', {
+    'input.mime_type': mimeType,
+    'input.data_type': Buffer.isBuffer(imageData) ? 'buffer' : 'file_path',
+    'input.data_size': Buffer.isBuffer(imageData) ? imageData.length : 'unknown'
+  });
+
   try {
     console.log('Starting image analysis with:', {
       isBuffer: Buffer.isBuffer(imageData),
@@ -67,29 +86,60 @@ If no list items are found, return an empty array: []`;
 
     // Call OpenAI Vision API
     console.log('Calling OpenAI Vision API...');
+    
+    // Create LLM span for OpenAI Vision call
+    const llmSpan = createLLMSpan('openai-vision-analysis', 'gpt-4o', prompt, {
+      'llm.temperature': 0.2,
+      'llm.max_tokens': 2000,
+      'llm.model_version': 'gpt-4o',
+      'input.mime_type': 'text/plain',
+      'input.image.mime_type': imageType,
+      'input.image.size': base64Image.length
+    });
+
+    // Add input messages to span
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: prompt,
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${imageType};base64,${base64Image}`,
+            },
+          },
+        ],
+      },
+    ];
+    addLLMInputMessages(llmSpan, messages);
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: prompt,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${imageType};base64,${base64Image}`,
-              },
-            },
-          ],
-        },
-      ],
+      messages: messages,
       max_tokens: 2000,
       temperature: 0.2, // Lower temperature for more consistent structured output
     });
     console.log('OpenAI API response received');
+
+    // Add output messages to LLM span
+    const outputMessages = [
+      {
+        role: 'assistant',
+        content: response.choices[0].message.content,
+      },
+    ];
+    addLLMOutputMessages(llmSpan, outputMessages);
+
+    // Add token usage to span
+    if (response.usage) {
+      llmSpan.setAttribute('llm.token_count.prompt', response.usage.prompt_tokens);
+      llmSpan.setAttribute('llm.token_count.completion', response.usage.completion_tokens);
+      llmSpan.setAttribute('llm.token_count.total', response.usage.total_tokens);
+    }
 
     // Extract and parse the response
     const content = response.choices[0].message.content;
@@ -104,9 +154,19 @@ If no list items are found, return an empty array: []`;
       } else {
         extractedItems = JSON.parse(content);
       }
+      
+      // Set LLM span output and status
+      llmSpan.setAttribute('output.value', JSON.stringify(extractedItems));
+      setSpanStatus(llmSpan, true);
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', content);
+      recordSpanException(llmSpan, parseError, {
+        'error.stage': 'json_parsing',
+        'llm.response.content': content.substring(0, 500) // Truncate for logging
+      });
       throw new Error('Failed to parse list items from image. Please try again with a clearer image.');
+    } finally {
+      llmSpan.end();
     }
 
     // Validate the extracted items
@@ -123,10 +183,30 @@ If no list items are found, return an empty array: []`;
       explanation: item.explanation || null,
     }));
 
+    // Complete agent span with success
+    agentSpan.setAttribute('output.value', JSON.stringify(validatedItems));
+    agentSpan.setAttribute('output.item_count', validatedItems.length);
+    addSpanMetadata(agentSpan, {
+      'analysis.items_found': validatedItems.length,
+      'analysis.categories': [...new Set(validatedItems.map(item => item.category))],
+      'analysis.source': 'image_upload'
+    });
+    addSpanTags(agentSpan, ['image-analysis', 'openai-vision', 'list-extraction']);
+    setSpanStatus(agentSpan, true);
+    agentSpan.end();
+
     return validatedItems;
 
   } catch (error) {
     console.error('Error in analyzeImage:', error);
+    
+    // Record error in agent span
+    recordSpanException(agentSpan, error, {
+      'error.stage': 'image_analysis',
+      'error.source': 'analyzeImage'
+    });
+    agentSpan.end();
+    
     throw error;
   }
 }

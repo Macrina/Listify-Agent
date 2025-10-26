@@ -19,5 +19,13 @@ services:
         value: https://mcp.agentdb.dev/LW-aEoVKYL
       - key: AGENTDB_DB_NAME
         value: listify-agent
+      - key: ARIZE_SPACE_ID
+        sync: false  # Will be set in Render dashboard
+      - key: ARIZE_API_KEY
+        sync: false  # Will be set in Render dashboard
+      - key: ARIZE_PROJECT_NAME
+        value: listify-agent
+      - key: ARIZE_ENDPOINT
+        value: https://otlp.arize.com/v1
     healthCheckPath: /api/health
     autoDeploy: true

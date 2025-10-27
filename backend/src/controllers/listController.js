@@ -167,9 +167,39 @@ export async function analyzeLinkInput(req, res) {
 
   } catch (error) {
     console.error('Error in analyzeLinkInput:', error);
+    
+    // Handle specific error types with appropriate status codes
+    if (error.message.includes('HTTP 403')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied: The website blocked our request. Please try a different URL or check if the site allows automated access.',
+      });
+    } else if (error.message.includes('HTTP 404')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Page not found: The URL does not exist or is no longer available.',
+      });
+    } else if (error.message.includes('HTTP 429')) {
+      return res.status(429).json({
+        success: false,
+        error: 'Rate limited: Too many requests to this website. Please try again later.',
+      });
+    } else if (error.message.includes('Invalid URL format')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid URL format. Please provide a valid URL starting with http:// or https://',
+      });
+    } else if (error.message.includes('timeout')) {
+      return res.status(408).json({
+        success: false,
+        error: 'Request timeout: The website took too long to respond. Please try again or use a different URL.',
+      });
+    }
+    
+    // Generic error for other cases
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to process URL',
+      error: error.message || 'Failed to process URL. Please try again or contact support if the issue persists.',
     });
   }
 }

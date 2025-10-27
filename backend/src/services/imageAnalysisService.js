@@ -316,30 +316,70 @@ Return ONLY a valid JSON array of objects.`;
        async function fetchContentFallback(url) {
          try {
            console.log('Using fallback HTTP method for:', url);
-           const response = await fetch(url, {
-             headers: {
-               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-             },
-             timeout: 10000
-           });
            
-           if (!response.ok) {
-             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+           // Try multiple user agents to avoid blocking
+           const userAgents = [
+             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
+           ];
+           
+           let lastError;
+           
+           for (const userAgent of userAgents) {
+             try {
+               console.log(`Trying with user agent: ${userAgent.substring(0, 50)}...`);
+               
+               const response = await fetch(url, {
+                 headers: {
+                   'User-Agent': userAgent,
+                   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                   'Accept-Language': 'en-US,en;q=0.5',
+                   'Accept-Encoding': 'gzip, deflate, br',
+                   'DNT': '1',
+                   'Connection': 'keep-alive',
+                   'Upgrade-Insecure-Requests': '1',
+                   'Sec-Fetch-Dest': 'document',
+                   'Sec-Fetch-Mode': 'navigate',
+                   'Sec-Fetch-Site': 'none',
+                   'Cache-Control': 'max-age=0'
+                 },
+                 timeout: 15000,
+                 redirect: 'follow',
+                 follow: 5
+               });
+               
+               if (!response.ok) {
+                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+               }
+               
+               const html = await response.text();
+               const $ = cheerio.load(html);
+               
+               // Remove script and style elements
+               $('script, style, nav, header, footer, aside').remove();
+               
+               const title = $('title').text().trim();
+               const content = $('main, article, .content, .post, .entry, body').text().trim();
+               
+               console.log(`Successfully fetched content with user agent: ${userAgent.substring(0, 30)}...`);
+               return { title, content };
+               
+             } catch (error) {
+               console.log(`Failed with user agent ${userAgent.substring(0, 30)}...: ${error.message}`);
+               lastError = error;
+               continue;
+             }
            }
            
-           const html = await response.text();
-           const $ = cheerio.load(html);
+           // If all user agents failed, throw the last error
+           throw lastError;
            
-           // Remove script and style elements
-           $('script, style, nav, header, footer, aside').remove();
-           
-           const title = $('title').text().trim();
-           const mainContent = $('main, article, .content, .post, .entry, body').text().trim();
-           
-           return { title, content: mainContent };
          } catch (error) {
-           console.error('Fallback method failed:', error);
-           throw error;
+           console.error('Fallback HTTP method failed:', error);
+           throw new Error(`HTTP ${error.message.includes('HTTP') ? error.message.split('HTTP ')[1].split(':')[0] : '403'}: ${error.message.includes('HTTP') ? error.message.split(': ')[1] : 'Forbidden'}`);
          }
        }
 
@@ -429,7 +469,7 @@ Return ONLY a valid JSON array of objects.`;
              const page = await browser.newPage();
              
              // Set user agent to avoid blocking
-             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
              
              // Set viewport for consistent rendering
              await page.setViewport({ width: 1280, height: 720 });

@@ -16,6 +16,7 @@ import {
   addSpanTags,
   SpanKinds
 } from '../utils/tracing.js';
+import ArizeEvaluationService from '../evaluations/arizeEvaluationService.js';
 
 /**
  * Analyzes an image and extracts list items using OpenAI Vision
@@ -24,6 +25,9 @@ import {
  * @returns {Promise<Array>} - Array of extracted list items
  */
 export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
+  // Initialize evaluation service
+  const evaluationService = new ArizeEvaluationService();
+  
   // Create agent span for the entire image analysis process
   const agentSpan = createAgentSpan('analyze-image', 'Image analysis request', {
     'input.mime_type': mimeType,
@@ -193,6 +197,28 @@ If no list items are found, return an empty array: []`;
     });
     addSpanTags(agentSpan, ['image-analysis', 'openai-vision', 'list-extraction']);
     setSpanStatus(agentSpan, true);
+    
+    // Evaluate the image analysis interaction
+    try {
+      const evaluation = await evaluationService.evaluateImageAnalysis({
+        userQuery: 'Analyze this image and extract list items',
+        agentResponse: `Successfully extracted ${validatedItems.length} items from image`,
+        imageMetadata: {
+          mimeType,
+          size: Buffer.isBuffer(imageData) ? imageData.length : 'unknown'
+        },
+        extractedItems: validatedItems,
+        processingTime: Date.now() - startTime
+      });
+      
+      // Log evaluation to Arize
+      await evaluationService.logEvaluationToArize(evaluation, 'image_analysis');
+      
+      console.log(`📊 Image analysis evaluation: Overall score ${evaluation.overall_score}/5`);
+    } catch (evalError) {
+      console.warn('Evaluation failed:', evalError.message);
+    }
+    
     agentSpan.end();
 
     return validatedItems;

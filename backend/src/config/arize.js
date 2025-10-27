@@ -5,7 +5,7 @@
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-grpc';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { trace } from '@opentelemetry/api';
@@ -18,7 +18,7 @@ const ARIZE_CONFIG = {
   spaceId: process.env.ARIZE_SPACE_ID,
   apiKey: process.env.ARIZE_API_KEY,
   projectName: process.env.ARIZE_PROJECT_NAME || 'listify-agent',
-  endpoint: process.env.ARIZE_ENDPOINT || 'https://otlp.arize.com/v1',
+  endpoint: process.env.ARIZE_ENDPOINT || 'https://otlp.arize.com/v1/traces',
   environment: process.env.NODE_ENV || 'development'
 };
 

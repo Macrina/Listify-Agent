@@ -26,6 +26,6 @@ services:
       - key: ARIZE_PROJECT_NAME
         value: listify-agent
       - key: ARIZE_ENDPOINT
-        value: https://otlp.arize.com/v1
+        value: https://otlp.arize.com/v1/traces
     healthCheckPath: /api/health
     autoDeploy: true

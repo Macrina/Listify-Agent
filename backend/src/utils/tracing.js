@@ -3,7 +3,7 @@
  * OpenInference semantic conventions and tracing helpers
  */
 
-import { trace } from '@opentelemetry/api';
+import { trace, context } from '@opentelemetry/api';
 
 // OpenInference semantic conventions
 export const SpanKinds = {
@@ -86,23 +86,44 @@ export const getTracer = (name = 'listify-agent') => {
   return trace.getTracer(name, '1.0.0');
 };
 
-// Create a span with OpenInference attributes
-export const createOpenInferenceSpan = (name, kind, attributes = {}) => {
+// Create a span with OpenInference attributes and run callback in its context
+export const createOpenInferenceSpan = (name, kind, attributes = {}, parentContext = context.active()) => {
   const tracer = getTracer();
-  return tracer.startSpan(name, {
-    attributes: {
-      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: kind,
-      ...attributes,
+  const span = tracer.startSpan(
+    name,
+    {
+      attributes: {
+        [SpanAttributes.OPENINFERENCE_SPAN_KIND]: kind,
+        ...attributes,
+      },
     },
-  });
+    parentContext
+  );
+  
+  return span;
+};
+
+// Run a callback in the context of a span
+export const runInSpanContext = (span, callback) => {
+  const activeContext = trace.setSpan(context.active(), span);
+  return context.with(activeContext, callback);
 };
 
 // Create an Agent span with graph metadata
 export const createAgentSpan = (name, input, attributes = {}) => {
-  return createOpenInferenceSpan(name, SpanKinds.AGENT, {
-    [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
-    ...attributes,
+  const tracer = getTracer();
+  const span = tracer.startSpan(name, {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
+      ...attributes,
+    },
   });
+  
+  // Set this span as active in the current context
+  trace.setSpan(context.active(), span);
+  
+  return span;
 };
 
 // Add graph attributes for agent/node visualization
@@ -123,11 +144,20 @@ export const addGraphAttributes = (span, nodeId, parentId = null, displayName = 
 
 // Create an LLM span
 export const createLLMSpan = (name, modelName, input, attributes = {}) => {
-  return createOpenInferenceSpan(name, SpanKinds.LLM, {
-    [SpanAttributes.LLM_MODEL_NAME]: modelName,
-    [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
-    ...attributes,
+  const tracer = getTracer();
+  const span = tracer.startSpan(name, {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.LLM,
+      [SpanAttributes.LLM_MODEL_NAME]: modelName,
+      [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
+      ...attributes,
+    },
   });
+  
+  // Set this span as active in the current context (child of parent span)
+  trace.setSpan(context.active(), span);
+  
+  return span;
 };
 
 // Create a Tool span

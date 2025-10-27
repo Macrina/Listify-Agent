@@ -466,6 +466,9 @@ If no list items are found, return an empty array: []`;
       'llm.response_format': 'json_object'
     });
 
+    // Add graph attributes for LLM visualization
+    addGraphAttributes(llmSpan, 'web_content_llm', 'link_analyzer_fetch', 'Web Content LLM');
+
     // Add input messages
     const messages = [{ role: 'user', content: prompt }];
     addLLMInputMessages(llmSpan, messages);
@@ -649,6 +652,9 @@ If no list items are found, return an empty array: []`;
         'llm.task': 'web_content_analysis',
         'llm.response_format': 'json_object'
       });
+
+      // Add graph attributes for LLM visualization
+      addGraphAttributes(llmSpan, 'web_content_llm', 'link_analyzer', 'Web Content LLM');
 
       // Add input messages
       const messages = [{ role: 'user', content: prompt }];

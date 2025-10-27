@@ -1,0 +1,7 @@
+arize
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+opentelemetry-instrumentation-requests
+python-dotenv
+requests
+openai

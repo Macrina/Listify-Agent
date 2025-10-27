@@ -119,13 +119,13 @@ If no list items are found, return an empty array: []`;
     ];
 
     // Create LLM span for OpenAI Vision call
-    const llmSpan = createLLMSpan('openai.vision.completion', 'gpt-4o', {
+    const llmSpan = createLLMSpan('openai.vision.completion', 'gpt-4o', prompt, {
       [SpanAttributes.LLM_TEMPERATURE]: 0.2,
       [SpanAttributes.LLM_MAX_TOKENS]: 2000,
       'llm.provider': 'openai',
       'llm.task': 'vision_analysis',
       'llm.response_format': 'json_object'
-    });
+    }, agentSpan);
 
     // Add graph attributes for LLM visualization
     addGraphAttributes(llmSpan, 'vision_llm', 'image_analyzer', 'Vision LLM');
@@ -282,13 +282,13 @@ ${text}
 If no list items are found, return an empty array: []`;
 
     // Create LLM span for OpenAI text completion
-    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
       [SpanAttributes.LLM_TEMPERATURE]: 0.2,
       [SpanAttributes.LLM_MAX_TOKENS]: 2000,
       'llm.provider': 'openai',
       'llm.task': 'text_analysis',
       'llm.response_format': 'json_object'
-    });
+    }, agentSpan);
 
     // Add graph attributes for LLM visualization
     addGraphAttributes(llmSpan, 'text_llm', 'text_analyzer', 'Text LLM');
@@ -458,13 +458,13 @@ ${textContent.substring(0, 4000)} // Limit content to avoid token limits
 If no list items are found, return an empty array: []`;
 
     // Create LLM span for OpenAI text completion
-    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
       [SpanAttributes.LLM_TEMPERATURE]: 0.2,
       [SpanAttributes.LLM_MAX_TOKENS]: 2000,
       'llm.provider': 'openai',
       'llm.task': 'web_content_analysis',
       'llm.response_format': 'json_object'
-    });
+    }, agentSpan);
 
     // Add graph attributes for LLM visualization
     addGraphAttributes(llmSpan, 'web_content_llm', 'link_analyzer_fetch', 'Web Content LLM');
@@ -645,13 +645,13 @@ ${textContent.substring(0, 8000)} // Limit content length
 If no list items are found, return an empty array: []`;
 
       // Create LLM span for OpenAI text completion
-      const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+      const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
         [SpanAttributes.LLM_TEMPERATURE]: 0.2,
         [SpanAttributes.LLM_MAX_TOKENS]: 2000,
         'llm.provider': 'openai',
         'llm.task': 'web_content_analysis',
         'llm.response_format': 'json_object'
-      });
+      }, agentSpan);
 
       // Add graph attributes for LLM visualization
       addGraphAttributes(llmSpan, 'web_content_llm', 'link_analyzer', 'Web Content LLM');

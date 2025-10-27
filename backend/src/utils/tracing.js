@@ -120,9 +120,6 @@ export const createAgentSpan = (name, input, attributes = {}) => {
     },
   });
   
-  // Set this span as active in the current context
-  trace.setSpan(context.active(), span);
-  
   return span;
 };
 
@@ -143,8 +140,15 @@ export const addGraphAttributes = (span, nodeId, parentId = null, displayName = 
 };
 
 // Create an LLM span
-export const createLLMSpan = (name, modelName, input, attributes = {}) => {
+export const createLLMSpan = (name, modelName, input, attributes = {}, parentSpan = null) => {
   const tracer = getTracer();
+  
+  // If parent span is provided, create child span in its context
+  let spanContext = context.active();
+  if (parentSpan) {
+    spanContext = trace.setSpan(context.active(), parentSpan);
+  }
+  
   const span = tracer.startSpan(name, {
     attributes: {
       [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.LLM,
@@ -152,10 +156,7 @@ export const createLLMSpan = (name, modelName, input, attributes = {}) => {
       [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
       ...attributes,
     },
-  });
-  
-  // Set this span as active in the current context (child of parent span)
-  trace.setSpan(context.active(), span);
+  }, spanContext);
   
   return span;
 };

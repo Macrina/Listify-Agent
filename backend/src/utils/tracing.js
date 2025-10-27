@@ -97,12 +97,28 @@ export const createOpenInferenceSpan = (name, kind, attributes = {}) => {
   });
 };
 
-// Create an Agent span
+// Create an Agent span with graph metadata
 export const createAgentSpan = (name, input, attributes = {}) => {
   return createOpenInferenceSpan(name, SpanKinds.AGENT, {
     [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
     ...attributes,
   });
+};
+
+// Add graph attributes for agent/node visualization
+export const addGraphAttributes = (span, nodeId, parentId = null, displayName = null) => {
+  if (!span) return;
+  
+  span.setAttribute('graph.node.id', nodeId);
+  if (parentId) {
+    span.setAttribute('graph.node.parent_id', parentId);
+  }
+  if (displayName) {
+    span.setAttribute('graph.node.display_name', displayName);
+  } else {
+    // Auto-generate display name from node ID
+    span.setAttribute('graph.node.display_name', nodeId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+  }
 };
 
 // Create an LLM span

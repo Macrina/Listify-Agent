@@ -8,11 +8,12 @@ import {
   createAgentSpan, 
   createLLMSpan, 
   addLLMInputMessages, 
-  addLLMOutputMessages,
-  setSpanStatus,
+  addLLMOutputMessages, 
+  setSpanStatus, 
   recordSpanException,
   addSpanMetadata,
   addSpanTags,
+  addGraphAttributes,
   SpanKinds,
   SpanAttributes
 } from '../utils/tracing.js';
@@ -34,6 +35,9 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
     'service.name': 'listify-agent',
     'service.version': '1.0.0'
   });
+
+  // Add graph attributes for agent visualization
+  addGraphAttributes(agentSpan, 'image_analyzer', null, 'Image Analyzer');
 
   try {
     console.log('Starting image analysis with:', {
@@ -122,6 +126,9 @@ If no list items are found, return an empty array: []`;
       'llm.task': 'vision_analysis',
       'llm.response_format': 'json_object'
     });
+
+    // Add graph attributes for LLM visualization
+    addGraphAttributes(llmSpan, 'vision_llm', 'image_analyzer', 'Vision LLM');
 
     // Add input messages
     addLLMInputMessages(llmSpan, messages);
@@ -245,6 +252,9 @@ export async function analyzeText(text) {
     'service.version': '1.0.0'
   });
 
+  // Add graph attributes for agent visualization
+  addGraphAttributes(agentSpan, 'text_analyzer', null, 'Text Analyzer');
+
   try {
     console.log('Starting text analysis');
 
@@ -279,6 +289,9 @@ If no list items are found, return an empty array: []`;
       'llm.task': 'text_analysis',
       'llm.response_format': 'json_object'
     });
+
+    // Add graph attributes for LLM visualization
+    addGraphAttributes(llmSpan, 'text_llm', 'text_analyzer', 'Text LLM');
 
     // Add input messages
     const messages = [{ role: 'user', content: prompt }];
@@ -394,6 +407,9 @@ async function analyzeLinkWithFetch(url) {
     'service.name': 'listify-agent',
     'service.version': '1.0.0'
   });
+
+  // Add graph attributes for agent visualization
+  addGraphAttributes(agentSpan, 'link_analyzer_fetch', null, 'Link Analyzer (Fetch)');
 
   try {
     console.log('Using fetch-based link analysis for:', url);
@@ -558,6 +574,9 @@ If no list items are found, return an empty array: []`;
     'service.name': 'listify-agent',
     'service.version': '1.0.0'
   });
+
+  // Add graph attributes for agent visualization
+  addGraphAttributes(agentSpan, 'link_analyzer', null, 'Link Analyzer');
 
   try {
     console.log('Starting link analysis for:', url);

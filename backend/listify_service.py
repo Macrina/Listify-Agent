@@ -16,6 +16,10 @@ from openai import OpenAI
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
+# Instrument OpenAI client with openinference
+from openinference.instrumentation.openai import OpenAIInstrumentor
+OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
+
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 

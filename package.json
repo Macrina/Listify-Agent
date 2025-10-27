@@ -1,0 +1,41 @@
+{
+  "name": "listify-agent",
+  "version": "1.0.0",
+  "description": "AI agent that extracts and creates structured lists from images, screenshots, PDFs, links or text",
+  "main": "backend/src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "./scripts/start.sh dev",
+    "start:backend": "./scripts/start.sh backend",
+    "start:frontend": "./scripts/start.sh frontend",
+    "start:production": "./scripts/start.sh production",
+    "dev": "./scripts/start.sh dev",
+    "dev:smart": "node scripts/dev-start.js",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm run dev",
+    "backend:start": "cd backend && npm start",
+    "frontend:start": "cd frontend && npm start",
+    "backend:install": "cd backend && npm install",
+    "frontend:install": "cd frontend && npm install",
+    "install:all": "npm install && npm run backend:install && npm run frontend:install",
+    "build": "npm run backend:build && npm run frontend:build",
+    "backend:build": "cd backend && npm run build",
+    "frontend:build": "cd frontend && npm run build",
+    "health": "curl -s http://localhost:3001/api/health | jq .",
+    "health:detailed": "curl -s http://localhost:3001/api/health/detailed | jq .",
+    "ports:check": "lsof -i :3000,3001,3002 | grep LISTEN",
+    "ports:kill": "pkill -f 'node.*server.js' && pkill -f 'vite'"
+  },
+  "keywords": [
+    "ai",
+    "list-extraction",
+    "vision",
+    "openai",
+    "agentdb"
+  ],
+  "author": "Macrina Damian",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

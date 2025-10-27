@@ -227,6 +227,102 @@ If no list items are found, return an empty array: []`;
 }
 
 /**
+ * Fallback function to analyze links using fetch instead of Puppeteer
+ * @param {string} url - URL to analyze
+ * @returns {Promise<Array>} - Array of extracted list items
+ */
+async function analyzeLinkWithFetch(url) {
+  try {
+    console.log('Using fetch-based link analysis for:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      },
+      timeout: 10000
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    
+    // Extract text content
+    const textContent = $('body').text().replace(/\s+/g, ' ').trim();
+    
+    console.log('Page content extracted via fetch, length:', textContent.length);
+    
+    // Analyze the text content using OpenAI
+    const prompt = `You are an expert at extracting and structuring information from web page content.
+
+Analyze this web page content and extract ALL list items, tasks, notes, or structured information.
+
+For EACH item you find, provide:
+- item_name: The main text/title of the item (required)
+- category: Choose the most appropriate category from: groceries, tasks, contacts, events, inventory, ideas, recipes, shopping, bills, other
+- quantity: Any number or quantity mentioned (if visible, otherwise null)
+- notes: Any additional details, context, or descriptions
+- explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
+
+Return ONLY a valid JSON array of objects. Each object must have the structure described above.
+
+Web page content:
+${textContent.substring(0, 4000)} // Limit content to avoid token limits
+
+If no list items are found, return an empty array: []`;
+
+    const response_openai = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.2,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    });
+
+    const rawOutput = response_openai.choices[0].message.content;
+    console.log('OpenAI response received for link analysis.');
+
+    let extractedItems = [];
+    try {
+      const parsed = JSON.parse(rawOutput);
+      extractedItems = parsed.items || [];
+      if (!Array.isArray(extractedItems)) {
+        throw new Error('Expected an array of items from LLM output.');
+      }
+    } catch (parseError) {
+      console.error('Failed to parse LLM output as JSON:', rawOutput, parseError);
+      throw new Error('LLM returned invalid JSON format.');
+    }
+
+    // Add source metadata
+    const itemsWithMetadata = extractedItems.map(item => ({
+      ...item,
+      source_type: 'url',
+      source_reference: url,
+      metadata: {
+        analysis_timestamp: new Date().toISOString(),
+        analysis_method: 'fetch',
+        content_length: textContent.length
+      }
+    }));
+
+    console.log(`Successfully extracted ${itemsWithMetadata.length} items from URL using fetch method.`);
+    return itemsWithMetadata;
+
+  } catch (error) {
+    console.error('Error in fetch-based link analysis:', error);
+    throw error;
+  }
+}
+
+/**
  * Analyzes a URL and extracts list items from the webpage
  * @param {string} url - URL to analyze
  * @returns {Promise<Array>} - Array of extracted list items
@@ -242,9 +338,16 @@ export async function analyzeLink(url) {
       throw new Error('Invalid URL format');
     }
 
-    // Launch browser
-    const browser = await launchOptimizedBrowser();
-    const page = await browser.newPage();
+    // Try to launch browser with fallback handling
+    let browser, page;
+    try {
+      const browserConfig = await launchOptimizedBrowser();
+      browser = browserConfig.browser;
+      page = browserConfig.page;
+    } catch (puppeteerError) {
+      console.warn('⚠️ Puppeteer failed to launch, falling back to fetch-based analysis:', puppeteerError.message);
+      return await analyzeLinkWithFetch(url);
+    }
 
     try {
       // Navigate to the URL with fallback

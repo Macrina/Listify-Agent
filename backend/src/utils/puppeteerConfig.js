@@ -11,6 +11,7 @@ import puppeteer from 'puppeteer';
 export const getPuppeteerConfig = () => {
   const isAppleSilicon = process.platform === 'darwin' && process.arch === 'arm64';
   const isIntelMac = process.platform === 'darwin' && process.arch === 'x64';
+  const isRender = process.env.RENDER === 'true' || process.env.NODE_ENV === 'production';
   
   // Log performance warnings if needed
   if (isAppleSilicon && process.arch !== 'arm64') {
@@ -53,18 +54,33 @@ export const getPuppeteerConfig = () => {
     baseArgs.push('--max_old_space_size=4096'); // Better for Intel
   }
 
-  return {
+  // Render-specific configuration
+  if (isRender) {
+    baseArgs.push('--single-process');
+    baseArgs.push('--disable-dev-shm-usage');
+    baseArgs.push('--no-sandbox');
+    baseArgs.push('--disable-setuid-sandbox');
+  }
+
+  const config = {
     headless: true,
     args: baseArgs,
     timeout: 30000,
     protocolTimeout: 30000,
     ignoreDefaultArgs: ['--disable-extensions'],
     ignoreHTTPSErrors: true,
-    // Additional performance options
-    ...(isAppleSilicon && {
-      executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-    })
   };
+
+  // Set executable path based on environment
+  if (isAppleSilicon && !isRender) {
+    config.executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  } else if (isRender) {
+    // On Render, let Puppeteer find Chrome automatically
+    // The postinstall script will install Chrome to the correct location
+    console.log('🔧 Using Render-optimized Puppeteer configuration');
+  }
+
+  return config;
 };
 
 /**

@@ -9,6 +9,7 @@ import {
   getStatistics,
   executeQuery,
 } from '../services/agentdbService.js';
+import { flushTraces } from '../config/arize.js';
 import fs from 'fs';
 
 /**
@@ -51,6 +52,9 @@ export async function uploadImage(req, res) {
     console.log('Starting image analysis for:', req.file.originalname);
     const extractedItems = await analyzeImage(imageData, req.file.mimetype);
     console.log('Image analysis completed, extracted items:', extractedItems.length);
+
+    // Flush traces to ensure they're exported
+    await flushTraces();
 
     // Clean up uploaded file (only for disk storage)
     if (req.file.path) {
@@ -107,6 +111,9 @@ export async function analyzeTextInput(req, res) {
     console.log('Analyzing text input');
     const extractedItems = await analyzeText(text);
 
+    // Flush traces to ensure they're exported
+    await flushTraces();
+
     // Save to database
     const savedList = await saveListItems(extractedItems, 'text', {
       textLength: text.length,
@@ -154,6 +161,9 @@ export async function analyzeLinkInput(req, res) {
     // Analyze the URL
     console.log('Analyzing URL:', url);
     const extractedItems = await analyzeLink(url);
+
+    // Flush traces to ensure they're exported
+    await flushTraces();
 
     res.json({
       success: true,

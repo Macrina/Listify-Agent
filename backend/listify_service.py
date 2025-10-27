@@ -120,13 +120,13 @@ If no list items are found, return an empty array: []"""
                 # Parse the JSON response
                 extracted_items = []
                 try:
-                # Clean the response to extract JSON
-                json_match = re.search(r'\[[\s\S]*\]', content)
-                if json_match:
-                    extracted_items = json.loads(json_match.group(0))
-                else:
-                    print("⚠️ No JSON array found, trying to parse entire content")
-                    extracted_items = json.loads(content)
+                    # Clean the response to extract JSON
+                    json_match = re.search(r'\[[\s\S]*\]', content)
+                    if json_match:
+                        extracted_items = json.loads(json_match.group(0))
+                    else:
+                        print("⚠️ No JSON array found, trying to parse entire content")
+                        extracted_items = json.loads(content)
                 except json.JSONDecodeError as parse_error:
                     print(f"❌ Failed to parse JSON response: {parse_error}")
                     print(f"Raw content: {content}")

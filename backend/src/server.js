@@ -9,7 +9,7 @@ import getPortConfig from './config/ports.js';
 import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
 import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
-import { initializeArizeTracing } from './config/arize-mcp.js';
+import { initializeArizeTracing } from './config/arize-mcp-fixed.js';
 
 // Load environment variables
 dotenv.config();

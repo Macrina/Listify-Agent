@@ -6,7 +6,7 @@
  * Based on: https://arize.com/docs/ax/observe/agents/implementing-agent-metadata-for-arize
  */
 
-import { initializeArizeTracing, getTracer } from './backend/src/config/arize.js';
+import { initializeArizeTracing, getTracer, flushTraces } from './backend/src/config/arize.js';
 import { 
   createAgentSpan, 
   createLLMSpan, 
@@ -60,11 +60,11 @@ const researchSpan = createAgentSpan('listify-agent.research', {
 addGraphAttributes(researchSpan, 'research_agent', 'content_generator', 'Research Agent');
 
 // LLM span under research agent
-const llmSpan = createLLMSpan('openai.research.completion', 'gpt-4o', {
+const llmSpan = createLLMSpan('openai.research.completion', 'gpt-4o', '', {
   [SpanAttributes.LLM_TEMPERATURE]: 0.2,
   'llm.provider': 'openai',
   'llm.task': 'research'
-});
+}, researchSpan);
 addGraphAttributes(llmSpan, 'research_llm', 'research_agent', 'Research LLM');
 
 // Add LLM data
@@ -182,8 +182,8 @@ console.log('  ├── image_analyzer');
 console.log('  ├── text_analyzer');
 console.log('  └── link_analyzer');
 
-console.log('\n⏳ Waiting 5 seconds for traces to be exported to Arize...');
-setTimeout(() => {
+console.log('\n⏳ Flushing traces to Arize...');
+flushTraces().then(() => {
   console.log('✅ Agent metadata traces should now be visible in your Arize dashboard!');
   console.log('\n📊 Look for these agent/node IDs in Arize:');
   console.log('   - main_orchestrator, input_parser, content_generator, research_agent');
@@ -196,4 +196,7 @@ setTimeout(() => {
   console.log('   3. View hierarchical trace structure');
   console.log('   4. See custom display names in the UI');
   process.exit(0);
-}, 5000);
+}).catch((error) => {
+  console.error('❌ Failed to flush traces:', error);
+  process.exit(1);
+});

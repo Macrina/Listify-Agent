@@ -39,6 +39,7 @@ const validateArizeConfig = () => {
 
 let tracerProvider = null;
 let tracer = null;
+let sdk = null;
 
 export const initializeArizeTracing = () => {
   if (!validateArizeConfig()) {
@@ -71,7 +72,7 @@ export const initializeArizeTracing = () => {
       'arize.project.name': ARIZE_CONFIG.projectName,
     });
 
-    const sdk = new NodeSDK({
+    sdk = new NodeSDK({
       resource,
       traceExporter: arizeExporter,
       instrumentations: [
@@ -105,3 +106,27 @@ export const initializeArizeTracing = () => {
 export const getTracerProvider = () => tracerProvider;
 export const getTracer = () => tracer;
 export const getArizeConfig = () => ARIZE_CONFIG;
+
+// Force flush all pending spans to export immediately
+export const flushTraces = async () => {
+  if (sdk && sdk.tracerProvider) {
+    try {
+      await sdk.tracerProvider.forceFlush();
+      console.log('✅ Traces flushed to Arize');
+    } catch (error) {
+      console.error('❌ Failed to flush traces:', error.message);
+    }
+  }
+};
+
+// Shutdown the SDK gracefully
+export const shutdownTracing = async () => {
+  if (sdk) {
+    try {
+      await sdk.shutdown();
+      console.log('✅ Arize tracing shut down gracefully');
+    } catch (error) {
+      console.error('❌ Failed to shutdown tracing:', error.message);
+    }
+  }
+};

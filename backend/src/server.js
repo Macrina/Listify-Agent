@@ -9,8 +9,14 @@ import getPortConfig from './config/ports.js';
 import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
 import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
+import { initializeArizeTracing } from './config/arize.js';
+
 // Load environment variables
 dotenv.config();
+
+// Initialize Arize tracing FIRST before any other imports that might use tracing
+console.log('🔧 Initializing observability...');
+const { tracerProvider, tracer } = initializeArizeTracing();
 
 // Log environment info for debugging
 console.log('🔧 Environment Info:', {

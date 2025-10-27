@@ -4,6 +4,18 @@ import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteerConfig.js';
+import { 
+  createAgentSpan, 
+  createLLMSpan, 
+  addLLMInputMessages, 
+  addLLMOutputMessages,
+  setSpanStatus,
+  recordSpanException,
+  addSpanMetadata,
+  addSpanTags,
+  SpanKinds,
+  SpanAttributes
+} from '../utils/tracing.js';
 
 /**
  * Analyzes an image and extracts list items using OpenAI Vision
@@ -12,12 +24,28 @@ import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteer
  * @returns {Promise<Array>} - Array of extracted list items
  */
 export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
+  // Create agent span for image analysis
+  const agentSpan = createAgentSpan('listify-agent.image-analysis', {
+    [SpanAttributes.INPUT_MIME_TYPE]: mimeType,
+    'operation.type': 'image_analysis',
+    'operation.category': 'ai_vision',
+    'agent.name': 'listify-agent',
+    'agent.version': '1.0.0',
+    'service.name': 'listify-agent',
+    'service.version': '1.0.0'
+  });
+
   try {
     console.log('Starting image analysis with:', {
       isBuffer: Buffer.isBuffer(imageData),
       mimeType: mimeType,
       dataSize: Buffer.isBuffer(imageData) ? imageData.length : 'N/A'
     });
+
+    // Add input attributes
+    agentSpan.setAttribute('input.image_size_bytes', Buffer.isBuffer(imageData) ? imageData.length : 0);
+    agentSpan.setAttribute('input.image_size_mb', Buffer.isBuffer(imageData) ? Math.round(imageData.length / (1024 * 1024) * 100) / 100 : 0);
+    agentSpan.setAttribute('input.format', mimeType.split('/')[-1] || 'unknown');
 
     let imageBuffer;
     if (Buffer.isBuffer(imageData)) {
@@ -86,12 +114,36 @@ If no list items are found, return an empty array: []`;
       }
     ];
 
+    // Create LLM span for OpenAI Vision call
+    const llmSpan = createLLMSpan('openai.vision.completion', 'gpt-4o', {
+      [SpanAttributes.LLM_TEMPERATURE]: 0.2,
+      [SpanAttributes.LLM_MAX_TOKENS]: 2000,
+      'llm.provider': 'openai',
+      'llm.task': 'vision_analysis',
+      'llm.response_format': 'json_object'
+    });
+
+    // Add input messages
+    addLLMInputMessages(llmSpan, messages);
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: messages,
       max_tokens: 2000,
       temperature: 0.2,
     });
+
+    // Add LLM response attributes
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response.usage.prompt_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response.usage.completion_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response.usage.total_tokens);
+    llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
+    llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
+
+    // Add output messages
+    addLLMOutputMessages(llmSpan, [response.choices[0].message]);
+    setSpanStatus(llmSpan, true);
+    llmSpan.end();
 
     console.log('OpenAI Vision API response received');
     console.log('Token usage:', response.usage);
@@ -139,10 +191,40 @@ If no list items are found, return an empty array: []`;
 
     console.log(`Successfully extracted ${validItems.length} items from image`);
     
+    // Add output attributes to agent span
+    agentSpan.setAttribute('output.item_count', validItems.length);
+    agentSpan.setAttribute('output.success', true);
+    agentSpan.setAttribute('output.categories', JSON.stringify([...new Set(validItems.map(item => item.category))]));
+    agentSpan.setAttribute('output.total_items', validItems.length);
+    agentSpan.setAttribute('output.summary', `Successfully extracted ${validItems.length} items from image`);
+    
+    if (validItems.length > 0) {
+      agentSpan.setAttribute('output.sample_items', JSON.stringify(validItems.slice(0, 3).map(item => item.item_name)));
+    }
+
+    // Add metadata
+    addSpanMetadata(agentSpan, {
+      analysis_timestamp: new Date().toISOString(),
+      image_type: imageType,
+      confidence: 'high'
+    });
+
+    setSpanStatus(agentSpan, true);
+    agentSpan.end();
+    
     return validItems;
 
   } catch (error) {
     console.error('Error in analyzeImage:', error);
+    
+    // Record error in span
+    recordSpanException(agentSpan, error, {
+      'output.success': false,
+      'output.item_count': 0,
+      'error.context': 'image_analysis'
+    });
+    agentSpan.end();
+    
     throw error;
   }
 }
@@ -153,8 +235,23 @@ If no list items are found, return an empty array: []`;
  * @returns {Promise<Array>} - Array of extracted list items
  */
 export async function analyzeText(text) {
+  // Create agent span for text analysis
+  const agentSpan = createAgentSpan('listify-agent.text-analysis', {
+    'operation.type': 'text_analysis',
+    'operation.category': 'ai_text',
+    'agent.name': 'listify-agent',
+    'agent.version': '1.0.0',
+    'service.name': 'listify-agent',
+    'service.version': '1.0.0'
+  });
+
   try {
     console.log('Starting text analysis');
+
+    // Add input attributes
+    agentSpan.setAttribute('input.text_length', text.length);
+    agentSpan.setAttribute('input.text_preview', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+    agentSpan.setAttribute('input.word_count', text.split(/\s+/).length);
 
     const prompt = `You are an expert at extracting and structuring information from text.
 
@@ -174,12 +271,37 @@ ${text}
 
 If no list items are found, return an empty array: []`;
 
+    // Create LLM span for OpenAI text completion
+    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+      [SpanAttributes.LLM_TEMPERATURE]: 0.2,
+      [SpanAttributes.LLM_MAX_TOKENS]: 2000,
+      'llm.provider': 'openai',
+      'llm.task': 'text_analysis',
+      'llm.response_format': 'json_object'
+    });
+
+    // Add input messages
+    const messages = [{ role: 'user', content: prompt }];
+    addLLMInputMessages(llmSpan, messages);
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
+      messages: messages,
       max_tokens: 2000,
       temperature: 0.2,
     });
+
+    // Add LLM response attributes
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response.usage.prompt_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response.usage.completion_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response.usage.total_tokens);
+    llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
+    llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
+
+    // Add output messages
+    addLLMOutputMessages(llmSpan, [response.choices[0].message]);
+    setSpanStatus(llmSpan, true);
+    llmSpan.end();
 
     const content = response.choices[0].message.content;
     console.log('Text analysis response:', content);
@@ -218,37 +340,83 @@ If no list items are found, return an empty array: []`;
 
     console.log(`Successfully extracted ${validItems.length} items from text`);
     
+    // Add output attributes to agent span
+    agentSpan.setAttribute('output.item_count', validItems.length);
+    agentSpan.setAttribute('output.success', true);
+    agentSpan.setAttribute('output.categories', JSON.stringify([...new Set(validItems.map(item => item.category))]));
+    agentSpan.setAttribute('output.total_items', validItems.length);
+    agentSpan.setAttribute('output.summary', `Successfully extracted ${validItems.length} items from text`);
+    
+    if (validItems.length > 0) {
+      agentSpan.setAttribute('output.sample_items', JSON.stringify(validItems.slice(0, 3).map(item => item.item_name)));
+    }
+
+    // Add metadata
+    addSpanMetadata(agentSpan, {
+      analysis_timestamp: new Date().toISOString(),
+      text_length: text.length,
+      confidence: 'high'
+    });
+
+    setSpanStatus(agentSpan, true);
+    agentSpan.end();
+    
     return validItems;
 
   } catch (error) {
     console.error('Error in analyzeText:', error);
+    
+    // Record error in span
+    recordSpanException(agentSpan, error, {
+      'output.success': false,
+      'output.item_count': 0,
+      'error.context': 'text_analysis'
+    });
+    agentSpan.end();
+    
     throw error;
   }
 }
 
-/**
+       /**
  * Fallback function to analyze links using fetch instead of Puppeteer
- * @param {string} url - URL to analyze
+        * @param {string} url - URL to analyze
  * @returns {Promise<Array>} - Array of extracted list items
  */
 async function analyzeLinkWithFetch(url) {
+  // Create agent span for fetch-based link analysis
+  const agentSpan = createAgentSpan('listify-agent.link-analysis-fetch', {
+    'operation.type': 'link_analysis',
+    'operation.category': 'web_scraping',
+    'operation.method': 'fetch',
+    'agent.name': 'listify-agent',
+    'agent.version': '1.0.0',
+    'service.name': 'listify-agent',
+    'service.version': '1.0.0'
+  });
+
   try {
     console.log('Using fetch-based link analysis for:', url);
-    
-    const response = await fetch(url, {
-      headers: {
+
+    // Add input attributes
+    agentSpan.setAttribute('input.url', url);
+    agentSpan.setAttribute('input.method', 'fetch');
+    agentSpan.setAttribute('input.fallback', true);
+               
+               const response = await fetch(url, {
+                 headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       },
       timeout: 10000
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    
+               });
+               
+               if (!response.ok) {
+                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+               }
+               
+               const html = await response.text();
+               const $ = cheerio.load(html);
+               
     // Extract text content
     const textContent = $('body').text().replace(/\s+/g, ' ').trim();
     
@@ -273,18 +441,38 @@ ${textContent.substring(0, 4000)} // Limit content to avoid token limits
 
 If no list items are found, return an empty array: []`;
 
+    // Create LLM span for OpenAI text completion
+    const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+      [SpanAttributes.LLM_TEMPERATURE]: 0.2,
+      [SpanAttributes.LLM_MAX_TOKENS]: 2000,
+      'llm.provider': 'openai',
+      'llm.task': 'web_content_analysis',
+      'llm.response_format': 'json_object'
+    });
+
+    // Add input messages
+    const messages = [{ role: 'user', content: prompt }];
+    addLLMInputMessages(llmSpan, messages);
+
     const response_openai = await openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.2,
       max_tokens: 2000,
       response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      messages: messages,
     });
+
+    // Add LLM response attributes
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response_openai.usage.prompt_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response_openai.usage.completion_tokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response_openai.usage.total_tokens);
+    llmSpan.setAttribute('llm.response_length', response_openai.choices[0].message.content.length);
+    llmSpan.setAttribute('llm.finish_reason', response_openai.choices[0].finish_reason);
+
+    // Add output messages
+    addLLMOutputMessages(llmSpan, [response_openai.choices[0].message]);
+    setSpanStatus(llmSpan, true);
+    llmSpan.end();
 
     const rawOutput = response_openai.choices[0].message.content;
     console.log('OpenAI response received for link analysis.');
@@ -314,29 +502,76 @@ If no list items are found, return an empty array: []`;
     }));
 
     console.log(`Successfully extracted ${itemsWithMetadata.length} items from URL using fetch method.`);
+    
+    // Add output attributes to agent span
+    agentSpan.setAttribute('output.item_count', itemsWithMetadata.length);
+    agentSpan.setAttribute('output.success', true);
+    agentSpan.setAttribute('output.categories', JSON.stringify([...new Set(itemsWithMetadata.map(item => item.category))]));
+    agentSpan.setAttribute('output.total_items', itemsWithMetadata.length);
+    agentSpan.setAttribute('output.summary', `Successfully extracted ${itemsWithMetadata.length} items from URL using fetch`);
+    
+    if (itemsWithMetadata.length > 0) {
+      agentSpan.setAttribute('output.sample_items', JSON.stringify(itemsWithMetadata.slice(0, 3).map(item => item.item_name)));
+    }
+
+    // Add metadata
+    addSpanMetadata(agentSpan, {
+      analysis_timestamp: new Date().toISOString(),
+      analysis_method: 'fetch',
+      content_length: textContent.length,
+      url: url
+    });
+
+    setSpanStatus(agentSpan, true);
+    agentSpan.end();
+    
     return itemsWithMetadata;
-
-  } catch (error) {
+           
+         } catch (error) {
     console.error('Error in fetch-based link analysis:', error);
+    
+    // Record error in span
+    recordSpanException(agentSpan, error, {
+      'output.success': false,
+      'output.item_count': 0,
+      'error.context': 'link_analysis_fetch'
+    });
+    agentSpan.end();
+    
     throw error;
-  }
-}
+         }
+       }
 
-/**
+       /**
  * Analyzes a URL and extracts list items from the webpage
- * @param {string} url - URL to analyze
- * @returns {Promise<Array>} - Array of extracted list items
- */
-export async function analyzeLink(url) {
+        * @param {string} url - URL to analyze
+        * @returns {Promise<Array>} - Array of extracted list items
+        */
+       export async function analyzeLink(url) {
+  // Create agent span for link analysis
+  const agentSpan = createAgentSpan('listify-agent.link-analysis', {
+    'operation.type': 'link_analysis',
+    'operation.category': 'web_scraping',
+    'operation.method': 'puppeteer',
+    'agent.name': 'listify-agent',
+    'agent.version': '1.0.0',
+    'service.name': 'listify-agent',
+    'service.version': '1.0.0'
+  });
+
   try {
     console.log('Starting link analysis for:', url);
 
-    // Validate URL
-    try {
-      new URL(url);
-    } catch (urlError) {
-      throw new Error('Invalid URL format');
-    }
+    // Add input attributes
+    agentSpan.setAttribute('input.url', url);
+    agentSpan.setAttribute('input.method', 'puppeteer');
+           
+           // Validate URL
+           try {
+             new URL(url);
+           } catch (urlError) {
+             throw new Error('Invalid URL format');
+           }
 
     // Try to launch browser with fallback handling
     let browser, page;
@@ -366,8 +601,8 @@ export async function analyzeLink(url) {
       console.log('Page content extracted, length:', textContent.length);
       
       // Close browser
-      await browser.close();
-      
+             await browser.close();
+             
       // Analyze the text content
       const prompt = `You are an expert at extracting and structuring information from web page content.
 
@@ -387,12 +622,37 @@ ${textContent.substring(0, 8000)} // Limit content length
 
 If no list items are found, return an empty array: []`;
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2000,
-        temperature: 0.2,
+      // Create LLM span for OpenAI text completion
+      const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', {
+        [SpanAttributes.LLM_TEMPERATURE]: 0.2,
+        [SpanAttributes.LLM_MAX_TOKENS]: 2000,
+        'llm.provider': 'openai',
+        'llm.task': 'web_content_analysis',
+        'llm.response_format': 'json_object'
       });
+
+      // Add input messages
+      const messages = [{ role: 'user', content: prompt }];
+      addLLMInputMessages(llmSpan, messages);
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+        messages: messages,
+      max_tokens: 2000,
+      temperature: 0.2,
+    });
+
+      // Add LLM response attributes
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response.usage.prompt_tokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response.usage.completion_tokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response.usage.total_tokens);
+      llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
+      llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
+
+      // Add output messages
+      addLLMOutputMessages(llmSpan, [response.choices[0].message]);
+      setSpanStatus(llmSpan, true);
+      llmSpan.end();
 
       const content_response = response.choices[0].message.content;
       console.log('Link analysis response:', content_response);
@@ -401,12 +661,12 @@ If no list items are found, return an empty array: []`;
       let extractedItems = [];
       try {
         const jsonMatch = content_response.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          extractedItems = JSON.parse(jsonMatch[0]);
-        } else {
+      if (jsonMatch) {
+        extractedItems = JSON.parse(jsonMatch[0]);
+      } else {
           extractedItems = JSON.parse(content_response);
-        }
-      } catch (parseError) {
+      }
+    } catch (parseError) {
         console.error('Failed to parse JSON response:', parseError);
         extractedItems = [];
       }
@@ -418,29 +678,73 @@ If no list items are found, return an empty array: []`;
                item.item_name.trim().length > 0;
       }).map(item => ({
         item_name: item.item_name.trim(),
-        category: item.category || 'other',
-        quantity: item.quantity || null,
-        notes: item.notes || null,
-        explanation: item.explanation || null,
+      category: item.category || 'other',
+      quantity: item.quantity || null,
+      notes: item.notes || null,
+      explanation: item.explanation || null,
         source_type: 'url',
-        metadata: {
+      metadata: {
           analysis_timestamp: new Date().toISOString(),
-          url: url,
+        url: url,
           content_length: textContent.length
-        }
-      }));
+      }
+    }));
 
       console.log(`Successfully extracted ${validItems.length} items from URL`);
+      
+      // Add output attributes to agent span
+      agentSpan.setAttribute('output.item_count', validItems.length);
+      agentSpan.setAttribute('output.success', true);
+      agentSpan.setAttribute('output.categories', JSON.stringify([...new Set(validItems.map(item => item.category))]));
+      agentSpan.setAttribute('output.total_items', validItems.length);
+      agentSpan.setAttribute('output.summary', `Successfully extracted ${validItems.length} items from URL using Puppeteer`);
+      
+      if (validItems.length > 0) {
+        agentSpan.setAttribute('output.sample_items', JSON.stringify(validItems.slice(0, 3).map(item => item.item_name)));
+      }
+
+      // Add metadata
+      addSpanMetadata(agentSpan, {
+        analysis_timestamp: new Date().toISOString(),
+        analysis_method: 'puppeteer',
+        content_length: textContent.length,
+        url: url
+      });
+
+      setSpanStatus(agentSpan, true);
+      agentSpan.end();
       
       return validItems;
 
     } catch (pageError) {
-      await browser.close();
-      throw pageError;
+      console.error('Error during Puppeteer page operations, falling back to fetch:', pageError);
+      if (browser) {
+        await browser.close();
+      }
+      
+      // Record error in span
+      recordSpanException(agentSpan, pageError, {
+        'output.success': false,
+        'output.item_count': 0,
+        'error.context': 'link_analysis_puppeteer',
+        'error.fallback': true
+      });
+      agentSpan.end();
+      
+      return await analyzeLinkWithFetch(url);
     }
 
   } catch (error) {
     console.error('Error in analyzeLink:', error);
+    
+    // Record error in span
+    recordSpanException(agentSpan, error, {
+      'output.success': false,
+      'output.item_count': 0,
+      'error.context': 'link_analysis'
+    });
+    agentSpan.end();
+    
     throw error;
   }
 }

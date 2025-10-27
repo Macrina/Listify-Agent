@@ -499,7 +499,19 @@ If no list items are found, return an empty array: []`;
     let extractedItems = [];
     try {
       const parsed = JSON.parse(rawOutput);
-      extractedItems = parsed.items || [];
+      
+      // Handle both array and object responses
+      if (Array.isArray(parsed)) {
+        extractedItems = parsed;
+      } else if (parsed.items && Array.isArray(parsed.items)) {
+        extractedItems = parsed.items;
+      } else if (parsed.data && Array.isArray(parsed.data)) {
+        extractedItems = parsed.data;
+      } else {
+        console.error('Unexpected JSON structure in fetch response:', parsed);
+        extractedItems = [];
+      }
+      
       if (!Array.isArray(extractedItems)) {
         throw new Error('Expected an array of items from LLM output.');
       }
@@ -685,15 +697,31 @@ If no list items are found, return an empty array: []`;
       // Parse the JSON response
       let extractedItems = [];
       try {
-        const jsonMatch = content_response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        extractedItems = JSON.parse(jsonMatch[0]);
-      } else {
-          extractedItems = JSON.parse(content_response);
-      }
-    } catch (parseError) {
+        const parsed = JSON.parse(content_response);
+        
+        // Handle both array and object responses
+        if (Array.isArray(parsed)) {
+          extractedItems = parsed;
+        } else if (parsed.items && Array.isArray(parsed.items)) {
+          extractedItems = parsed.items;
+        } else if (parsed.data && Array.isArray(parsed.data)) {
+          extractedItems = parsed.data;
+        } else {
+          console.error('Unexpected JSON structure:', parsed);
+          extractedItems = [];
+        }
+      } catch (parseError) {
         console.error('Failed to parse JSON response:', parseError);
-        extractedItems = [];
+        // Try to extract array from string if JSON parsing fails
+        try {
+          const jsonMatch = content_response.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            extractedItems = JSON.parse(jsonMatch[0]);
+          }
+        } catch (fallbackError) {
+          console.error('Fallback parsing also failed:', fallbackError);
+          extractedItems = [];
+        }
       }
 
       // Validate and clean the extracted items

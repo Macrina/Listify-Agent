@@ -17,6 +17,7 @@ import {
   SpanKinds,
   withSpan
 } from '../utils/tracing-mcp.js';
+import { ArizeAgentMetadata } from '../utils/arizeAgentMetadata.js';
 import ArizeEvaluationService from '../evaluations/arizeEvaluationService.js';
 
 /**
@@ -26,14 +27,16 @@ import ArizeEvaluationService from '../evaluations/arizeEvaluationService.js';
  * @returns {Promise<Array>} - Array of extracted list items
  */
 export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
-  // Initialize evaluation service
+  // Initialize evaluation service and agent metadata
   const evaluationService = new ArizeEvaluationService();
+  const agentMetadata = new ArizeAgentMetadata();
   
-  // Create agent span for the entire image analysis process
-  const agentSpan = createAgentSpan('analyze-image', 'Image analysis request', {
-    'input.mime_type': mimeType,
-    'input.data_type': Buffer.isBuffer(imageData) ? 'buffer' : 'file_path',
-    'input.data_size': Buffer.isBuffer(imageData) ? imageData.length : 'unknown'
+  // Create orchestrator span for the entire image analysis workflow
+  const orchestratorSpan = agentMetadata.createOrchestratorSpan('image-analysis', {
+    'workflow.input_type': 'image',
+    'workflow.input_format': mimeType,
+    'workflow.data_type': Buffer.isBuffer(imageData) ? 'buffer' : 'file_path',
+    'workflow.data_size': Buffer.isBuffer(imageData) ? imageData.length : 'unknown'
   });
 
   try {
@@ -43,7 +46,16 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
       dataSize: Buffer.isBuffer(imageData) ? imageData.length : 'N/A'
     });
 
-    // Handle both buffer (production) and file path (development)
+    // Step 1: Image preprocessing
+    const preprocessingSpan = agentMetadata.createProcessingNodeSpan(
+      'image-preprocessing',
+      'image-analysis_orchestrator',
+      {
+        'processing.step': 'image_preprocessing',
+        'processing.input_type': Buffer.isBuffer(imageData) ? 'buffer' : 'file_path'
+      }
+    );
+
     let imageBuffer;
     if (Buffer.isBuffer(imageData)) {
       // Buffer from memory storage (production)
@@ -61,6 +73,11 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
     // Use provided mimeType or determine from file extension
     const imageType = mimeType || (typeof imageData === 'string' && imageData.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
     console.log('Using image type:', imageType);
+
+    agentMetadata.completeSpan(preprocessingSpan, true, 'Image preprocessing completed', {
+      'output.base64_length': base64Image.length,
+      'output.image_type': imageType
+    });
 
     // Create the prompt for list extraction
     const prompt = `You are an expert at extracting and structuring information from images.
@@ -89,9 +106,22 @@ Example format:
 
 If no list items are found, return an empty array: []`;
 
-    // Call OpenAI Vision API
+    // Step 2: LLM Analysis
     console.log('Calling OpenAI Vision API...');
     
+    const llmAnalysisSpan = agentMetadata.createProcessingNodeSpan(
+      'llm-analysis',
+      'image-analysis_orchestrator',
+      {
+        'processing.step': 'llm_analysis',
+        'llm.model': 'gpt-4o',
+        'llm.temperature': 0.2,
+        'llm.max_tokens': 2000,
+        'input.image.mime_type': imageType,
+        'input.image.size': base64Image.length
+      }
+    );
+
     // Create LLM span for OpenAI Vision call
     const llmSpan = createLLMSpan('openai-vision-analysis', 'gpt-4o', prompt, {
       'llm.temperature': 0.2,
@@ -188,51 +218,68 @@ If no list items are found, return an empty array: []`;
       explanation: item.explanation || null,
     }));
 
-    // Complete agent span with success
-    agentSpan.setAttribute('output.value', JSON.stringify(validatedItems));
-    agentSpan.setAttribute('output.item_count', validatedItems.length);
-    addSpanMetadata(agentSpan, {
-      'analysis.items_found': validatedItems.length,
-      'analysis.categories': [...new Set(validatedItems.map(item => item.category))],
-      'analysis.source': 'image_upload'
+    // Complete LLM analysis span
+    agentMetadata.completeSpan(llmAnalysisSpan, true, 'LLM analysis completed successfully', {
+      'output.items_found': validatedItems.length,
+      'output.categories': [...new Set(validatedItems.map(item => item.category))],
+      'output.response_length': content.length
     });
-    addSpanTags(agentSpan, ['image-analysis', 'openai-vision', 'list-extraction']);
-    setSpanStatus(agentSpan, true);
+
+    // Step 3: Quality evaluation
+    const evaluationSpan = agentMetadata.createProcessingNodeSpan(
+      'quality-evaluation',
+      'image-analysis_orchestrator',
+      {
+        'processing.step': 'quality_evaluation',
+        'evaluation.items_count': validatedItems.length
+      }
+    );
     
-    // Evaluate the image analysis interaction
     try {
-      const evaluation = await evaluationService.evaluateImageAnalysis({
-        userQuery: 'Analyze this image and extract list items',
-        agentResponse: `Successfully extracted ${validatedItems.length} items from image`,
-        imageMetadata: {
-          mimeType,
-          size: Buffer.isBuffer(imageData) ? imageData.length : 'unknown'
-        },
-        extractedItems: validatedItems,
-        processingTime: Date.now() - startTime
-      });
-      
+      // Evaluate the image analysis
+      const evaluationResult = await evaluationService.evaluateImageAnalysis(
+        'Analyze this image and extract list items',
+        JSON.stringify(validatedItems),
+        validatedItems
+      );
+
       // Log evaluation to Arize
-      await evaluationService.logEvaluationToArize(evaluation, 'image_analysis');
-      
-      console.log(`📊 Image analysis evaluation: Overall score ${evaluation.overall_score}/5`);
+      await evaluationService.logEvaluationToArize(evaluationResult, {
+        'analysis.items_found': validatedItems.length,
+        'analysis.categories': [...new Set(validatedItems.map(item => item.category))],
+        'analysis.source': 'image_upload'
+      });
+
+      agentMetadata.completeSpan(evaluationSpan, true, 'Quality evaluation completed', {
+        'evaluation.overall_score': evaluationResult.overall_score,
+        'evaluation.has_hallucinations': evaluationResult.has_hallucinations
+      });
+
+      console.log(`📊 Image analysis evaluation: Overall score ${evaluationResult.overall_score}/5`);
+
     } catch (evalError) {
-      console.warn('Evaluation failed:', evalError.message);
+      console.error('Evaluation failed:', evalError);
+      agentMetadata.completeSpan(evaluationSpan, false, `Evaluation failed: ${evalError.message}`);
     }
-    
-    agentSpan.end();
+
+    // Complete orchestrator span with success
+    agentMetadata.completeSpan(orchestratorSpan, true, 'Image analysis workflow completed successfully', {
+      'workflow.items_extracted': validatedItems.length,
+      'workflow.categories_found': [...new Set(validatedItems.map(item => item.category))],
+      'workflow.success': true
+    });
 
     return validatedItems;
 
   } catch (error) {
     console.error('Error in analyzeImage:', error);
     
-    // Record error in agent span
-    recordSpanException(agentSpan, error, {
-      'error.stage': 'image_analysis',
-      'error.source': 'analyzeImage'
+    // Complete orchestrator span with error
+    agentMetadata.completeSpan(orchestratorSpan, false, `Image analysis workflow failed: ${error.message}`, {
+      'workflow.error_type': error.constructor.name,
+      'workflow.error_message': error.message,
+      'workflow.success': false
     });
-    agentSpan.end();
     
     throw error;
   }

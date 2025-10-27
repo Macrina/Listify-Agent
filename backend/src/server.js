@@ -9,14 +9,8 @@ import getPortConfig from './config/ports.js';
 import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
 import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
-import { initializeArizeTracing } from './config/arize-fixed.js';
-
 // Load environment variables
 dotenv.config();
-
-// Initialize Arize tracing first (before any other imports that might use tracing)
-console.log('🔧 Initializing observability...');
-const { tracerProvider, tracer } = initializeArizeTracing();
 
 // Log environment info for debugging
 console.log('🔧 Environment Info:', {
@@ -24,8 +18,7 @@ console.log('🔧 Environment Info:', {
   PORT: process.env.PORT,
   NODE_VERSION: process.version,
   PLATFORM: process.platform,
-  ARCH: process.arch,
-  ARIZE_ENABLED: !!tracerProvider
+  ARCH: process.arch
 });
 
 const app = express();

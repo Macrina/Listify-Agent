@@ -4,7 +4,7 @@
  */
 
 import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
-import { getTracer } from '../config/arize-mcp.js';
+import { getTracer } from '../config/arize-fixed.js';
 
 // OpenInference Span Kinds following MCP conventions
 export const SpanKinds = {

@@ -4,7 +4,7 @@
  */
 
 import ArizeEvaluator from './arizeEvaluator.js';
-import { getTracer } from '../config/arize.js';
+import { getTracer } from '../config/arize-fixed.js';
 
 export class ArizeEvaluationService {
   constructor() {

@@ -3,7 +3,7 @@
  * Comprehensive LLM quality monitoring and evaluation
  */
 
-import { getTracer } from '../config/arize.js';
+import { getTracer } from '../config/arize-fixed.js';
 
 // Evaluation criteria and scoring functions
 export class ArizeEvaluator {

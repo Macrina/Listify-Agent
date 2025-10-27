@@ -14,8 +14,9 @@ import {
   recordSpanException,
   addSpanMetadata,
   addSpanTags,
-  SpanKinds
-} from '../utils/tracing.js';
+  SpanKinds,
+  withSpan
+} from '../utils/tracing-mcp.js';
 import ArizeEvaluationService from '../evaluations/arizeEvaluationService.js';
 
 /**

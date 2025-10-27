@@ -26,7 +26,7 @@ const ARIZE_CONFIG = {
   projectName: process.env.ARIZE_PROJECT_NAME || 'listify-agent',
   modelId: process.env.ARIZE_MODEL_ID || 'listify-agent-model',
   modelVersion: process.env.ARIZE_MODEL_VERSION || 'v1.0.0',
-  endpoint: 'https://otlp.arize.com/v1', // GRPC endpoint as recommended
+  endpoint: process.env.ARIZE_ENDPOINT || 'https://otlp.arize.com/v1', // GRPC endpoint as recommended
   environment: process.env.NODE_ENV || 'development'
 };
 
@@ -48,6 +48,13 @@ let tracerProvider = null;
 let tracer = null;
 
 export const initializeArizeTracing = () => {
+  console.log('🔧 Arize Config Check:', {
+    spaceId: ARIZE_CONFIG.spaceId ? '✅ Set' : '❌ Missing',
+    apiKey: ARIZE_CONFIG.apiKey ? '✅ Set' : '❌ Missing',
+    endpoint: ARIZE_CONFIG.endpoint,
+    projectName: ARIZE_CONFIG.projectName
+  });
+
   if (!validateArizeConfig()) {
     console.log('🔧 Arize tracing disabled - missing credentials');
     return { tracerProvider: null, tracer: null };
@@ -55,6 +62,9 @@ export const initializeArizeTracing = () => {
 
   try {
     console.log('🔧 Initializing Arize tracing with MCP best practices...');
+    console.log(`📡 Endpoint: ${ARIZE_CONFIG.endpoint}`);
+    console.log(`🏷️  Project: ${ARIZE_CONFIG.projectName}`);
+    console.log(`🤖 Model: ${ARIZE_CONFIG.modelId} v${ARIZE_CONFIG.modelVersion}`);
 
     // Create metadata for GRPC exporter as recommended by MCP
     const metadata = new Metadata();

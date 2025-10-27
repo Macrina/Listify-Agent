@@ -5,3 +5,4 @@ opentelemetry-instrumentation-requests
 python-dotenv
 requests
 openai
+pandas

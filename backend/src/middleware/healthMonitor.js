@@ -3,7 +3,7 @@
  * Comprehensive health checks across all services and ports
  */
 
-// import { healthCheck as agentdbHealthCheck } from '../services/agentdbRealService.js';
+import { getTracerProvider, getArizeConfig } from '../config/arize.js';
 
 /**
  * System health information
@@ -14,6 +14,9 @@ const getSystemHealth = async () => {
   try {
     // Check AgentDB connection
     const agentdbStatus = await checkAgentDBHealth();
+    
+    // Check Arize tracing status
+    const arizeStatus = checkArizeHealth();
     
     // Check memory usage
     const memoryUsage = process.memoryUsage();
@@ -45,6 +48,7 @@ const getSystemHealth = async () => {
       memory: memoryStatus,
       services: {
         agentdb: agentdbStatus,
+        arize: arizeStatus,
         api: { status: 'healthy', port: process.env.PORT || 3001 },
       },
       version: '1.0.0'
@@ -56,8 +60,42 @@ const getSystemHealth = async () => {
       error: error.message,
       services: {
         agentdb: { status: 'error', error: error.message },
+        arize: { status: 'error', error: error.message },
         api: { status: 'error', error: error.message }
       }
+    };
+  }
+};
+
+/**
+ * Check Arize tracing health
+ */
+const checkArizeHealth = () => {
+  try {
+    const tracerProvider = getTracerProvider();
+    const arizeConfig = getArizeConfig();
+    
+    const hasSpaceId = !!process.env.ARIZE_SPACE_ID;
+    const hasApiKey = !!process.env.ARIZE_API_KEY;
+    const hasProjectName = !!process.env.ARIZE_PROJECT_NAME;
+    
+    if (!hasSpaceId || !hasApiKey || !hasProjectName) {
+      throw new Error('Arize configuration missing');
+    }
+    
+    return {
+      status: tracerProvider ? 'healthy' : 'unhealthy',
+      configured: true,
+      spaceId: hasSpaceId ? 'configured' : 'missing',
+      apiKey: hasApiKey ? 'configured' : 'missing',
+      projectName: arizeConfig.projectName || 'missing',
+      tracerProvider: tracerProvider ? 'initialized' : 'not initialized'
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      error: error.message,
+      configured: false
     };
   }
 };

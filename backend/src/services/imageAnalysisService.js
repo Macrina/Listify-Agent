@@ -427,7 +427,17 @@ async function analyzeLinkWithFetch(url) {
                });
                
                if (!response.ok) {
-                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                 if (response.status === 403) {
+                   throw new Error('Access denied: The website blocked our request. Please try a different URL or check if the site allows automated access.');
+                 } else if (response.status === 404) {
+                   throw new Error('Page not found: The URL does not exist or is no longer available.');
+                 } else if (response.status === 429) {
+                   throw new Error('Rate limited: Too many requests. Please try again later.');
+                 } else if (response.status >= 500) {
+                   throw new Error('Server error: The website is experiencing issues. Please try again later.');
+                 } else {
+                   throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                 }
                }
                
                const html = await response.text();

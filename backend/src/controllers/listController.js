@@ -165,6 +165,19 @@ export async function analyzeLinkInput(req, res) {
     // Flush traces to ensure they're exported
     await flushTraces();
 
+    // Check if any items were extracted
+    if (!extractedItems || extractedItems.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          items: [],
+          itemCount: 0,
+          url: url
+        },
+        message: 'No list items found on this page. The page might not contain structured information or the content could not be accessed.',
+      });
+    }
+
     res.json({
       success: true,
       data: {
@@ -179,25 +192,30 @@ export async function analyzeLinkInput(req, res) {
     console.error('Error in analyzeLinkInput:', error);
     
     // Handle specific error types with appropriate status codes
-    if (error.message.includes('HTTP 403')) {
+    if (error.message.includes('Access denied')) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied: The website blocked our request. Please try a different URL or check if the site allows automated access.',
+        error: error.message,
       });
-    } else if (error.message.includes('HTTP 404')) {
+    } else if (error.message.includes('Page not found')) {
       return res.status(404).json({
         success: false,
-        error: 'Page not found: The URL does not exist or is no longer available.',
+        error: error.message,
       });
-    } else if (error.message.includes('HTTP 429')) {
+    } else if (error.message.includes('Rate limited')) {
       return res.status(429).json({
         success: false,
-        error: 'Rate limited: Too many requests to this website. Please try again later.',
+        error: error.message,
+      });
+    } else if (error.message.includes('Server error')) {
+      return res.status(502).json({
+        success: false,
+        error: error.message,
       });
     } else if (error.message.includes('Invalid URL format')) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid URL format. Please provide a valid URL starting with http:// or https://',
+        error: error.message,
       });
     } else if (error.message.includes('timeout')) {
       return res.status(408).json({

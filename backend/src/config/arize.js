@@ -61,7 +61,7 @@ const register = ({ space_id, api_key, project_name }) => {
   });
 
   // Create SDK with Arize-specific resource attributes
-  const sdk = new NodeSDK({
+  sdk = new NodeSDK({
     resource: new Resource({
       [SEMRESATTRS_PROJECT_NAME]: project_name,
       "model_id": project_name,
@@ -111,7 +111,7 @@ export const initializeArizeTracing = () => {
   }
 };
 
-export const getTracerProvider = () => sdk?.tracerProvider || null;
+export const getTracerProvider = () => sdk?.tracerProvider || trace.getTracerProvider();
 export const getTracer = () => null; // Will be obtained from tracerProvider when needed
 export const getArizeConfig = () => ARIZE_CONFIG;
 

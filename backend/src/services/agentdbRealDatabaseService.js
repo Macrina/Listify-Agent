@@ -105,44 +105,63 @@ export async function saveListItems(items, source = 'image', sourceMetadata = nu
   try {
     console.log(`Saving ${items.length} items from ${source} source to real AgentDB`);
     
-    // Create a new list
-    const listQuery = `
-      INSERT INTO lists (list_name, description, created_at, updated_at)
-      VALUES (?, ?, datetime('now'), datetime('now'))
-      RETURNING id
-    `;
-    
-    const listResult = await executeQuery(listQuery, [
-      `List from ${source}`,
-      `Items extracted from ${source} source`
-    ]);
-    
-    console.log('List creation result:', JSON.stringify(listResult, null, 2));
-    
-    // Handle different response structures
-    let listId;
-    if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].id) {
-      listId = listResult.results[0].rows[0].id;
-    } else if (listResult.results && listResult.results[0] && listResult.results[0].lastInsertRowid) {
-      listId = listResult.results[0].lastInsertRowid;
-    } else if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].lastInsertRowid) {
-      listId = listResult.results[0].rows[0].lastInsertRowid;
-    } else if (listResult.lastInsertRowid) {
-      listId = listResult.lastInsertRowid;
+    // Validate items before creating list
+    if (!items || items.length === 0) {
+      throw new Error('No items to save');
     }
     
-    console.log('Extracted listId:', listId);
-    
-    if (!listId) {
-      console.error('Failed to extract listId from result:', listResult);
-      throw new Error('Failed to create list in AgentDB');
+    // Validate each item has required fields
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.item_name || typeof item.item_name !== 'string' || item.item_name.trim() === '') {
+        throw new Error(`Item ${i + 1} is missing required item_name field`);
+      }
     }
     
-    // Insert items
-    console.log(`Inserting ${items.length} items for listId: ${listId}`);
+    // Use transaction to ensure atomicity - either all items are saved or none
+    console.log('Starting transaction for list and items...');
     
-    const itemInserts = items.map(async (item, index) => {
-      try {
+    // Begin transaction
+    await executeQuery('BEGIN TRANSACTION');
+    
+    try {
+      // Create a new list
+      const listQuery = `
+        INSERT INTO lists (list_name, description, created_at, updated_at)
+        VALUES (?, ?, datetime('now'), datetime('now'))
+        RETURNING id
+      `;
+      
+      const listResult = await executeQuery(listQuery, [
+        `List from ${source}`,
+        `Items extracted from ${source} source`
+      ]);
+      
+      console.log('List creation result:', JSON.stringify(listResult, null, 2));
+      
+      // Handle different response structures
+      let listId;
+      if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].id) {
+        listId = listResult.results[0].rows[0].id;
+      } else if (listResult.results && listResult.results[0] && listResult.results[0].lastInsertRowid) {
+        listId = listResult.results[0].lastInsertRowid;
+      } else if (listResult.results && listResult.results[0] && listResult.results[0].rows && listResult.results[0].rows[0] && listResult.results[0].rows[0].lastInsertRowid) {
+        listId = listResult.results[0].rows[0].lastInsertRowid;
+      } else if (listResult.lastInsertRowid) {
+        listId = listResult.lastInsertRowid;
+      }
+      
+      console.log('Extracted listId:', listId);
+      
+      if (!listId) {
+        console.error('Failed to extract listId from result:', listResult);
+        throw new Error('Failed to create list in AgentDB');
+      }
+      
+      // Insert items
+      console.log(`Inserting ${items.length} items for listId: ${listId}`);
+      
+      const itemInserts = items.map(async (item, index) => {
         const itemQuery = `
           INSERT INTO list_items (
             list_id, item_name, category, quantity,
@@ -168,7 +187,7 @@ export async function saveListItems(items, source = 'image', sourceMetadata = nu
 
         const params = [
           listId,
-          item.item_name,
+          item.item_name.trim(), // Ensure no leading/trailing whitespace
           item.category || 'other',
           item.quantity,
           item.notes,
@@ -182,27 +201,30 @@ export async function saveListItems(items, source = 'image', sourceMetadata = nu
         const result = await executeQuery(itemQuery, params);
         console.log(`Item ${index + 1} inserted successfully:`, result);
         return result;
-      } catch (error) {
-        console.error(`Error inserting item ${index + 1} (${item.item_name}):`, error);
-        throw error;
-      }
-    });
-    
-    try {
+      });
+      
+      // Wait for all items to be inserted
       await Promise.all(itemInserts);
       console.log('All items inserted successfully');
+      
+      // Commit transaction
+      await executeQuery('COMMIT');
+      console.log('Transaction committed successfully');
+      
+      return {
+        listId,
+        itemCount: items.length,
+        items: items,
+        source: source,
+        sourceMetadata: sourceMetadata
+      };
+      
     } catch (error) {
-      console.error('Error inserting items:', error);
+      // Rollback transaction on any error
+      console.error('Error in transaction, rolling back:', error);
+      await executeQuery('ROLLBACK');
       throw error;
     }
-    
-    return {
-      listId,
-      itemCount: items.length,
-      items: items,
-      source: source,
-      sourceMetadata: sourceMetadata
-    };
     
   } catch (error) {
     console.error('Error saving list items to AgentDB:', error);

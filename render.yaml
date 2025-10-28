@@ -1,16 +1,16 @@
 services:
-  # Single Web Service (Backend + Frontend)
+  # Backend Service
   - type: web
-    name: listify-agent
+    name: listify-agent-backend
     env: node
     plan: starter
-    buildCommand: cd backend && npm install && cd ../frontend && npm install && npx vite build
+    buildCommand: cd backend && npm install
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 3000
+        value: 3001
       - key: OPENAI_API_KEY
         sync: false  # Will be set in Render dashboard
       - key: AGENTDB_API_KEY
@@ -29,3 +29,14 @@ services:
         value: https://otlp.arize.com
     healthCheckPath: /api/health
     autoDeploy: true
+
+  # Frontend Service
+  - type: web
+    name: listify-agent-frontend
+    env: static
+    plan: starter
+    buildCommand: cd frontend && npm install && npx vite build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://listify-agent-backend.onrender.com/api

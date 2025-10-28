@@ -4,6 +4,7 @@
  */
 
 import { getTracerProvider, getArizeConfig } from '../config/arize.js';
+import { trace } from '@opentelemetry/api';
 
 /**
  * System health information

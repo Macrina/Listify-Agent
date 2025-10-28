@@ -8,7 +8,7 @@ import {
   searchListItems,
   getStatistics,
   executeQuery,
-} from '../services/agentdbService.js';
+} from '../services/agentdbRealDatabaseService.js';
 import { flushTraces } from '../config/arize.js';
 import fs from 'fs';
 

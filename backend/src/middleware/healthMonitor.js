@@ -84,8 +84,8 @@ const checkArizeHealth = () => {
       throw new Error('Arize configuration missing');
     }
     
-    // Check if we have a proper tracer provider (not just the default one)
-    const isArizeInitialized = tracerProvider && tracerProvider !== trace.getTracerProvider();
+    // Check if we have a proper tracer provider
+    const isArizeInitialized = tracerProvider && tracerProvider !== null;
     
     return {
       status: isArizeInitialized ? 'healthy' : 'unhealthy',

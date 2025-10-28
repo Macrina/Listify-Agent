@@ -83,13 +83,16 @@ const checkArizeHealth = () => {
       throw new Error('Arize configuration missing');
     }
     
+    // Check if we have a proper tracer provider (not just the default one)
+    const isArizeInitialized = tracerProvider && tracerProvider !== trace.getTracerProvider();
+    
     return {
-      status: tracerProvider ? 'healthy' : 'unhealthy',
+      status: isArizeInitialized ? 'healthy' : 'unhealthy',
       configured: true,
       spaceId: hasSpaceId ? 'configured' : 'missing',
       apiKey: hasApiKey ? 'configured' : 'missing',
       projectName: arizeConfig.projectName || 'missing',
-      tracerProvider: tracerProvider ? 'initialized' : 'not initialized'
+      tracerProvider: isArizeInitialized ? 'initialized' : 'not initialized'
     };
   } catch (error) {
     return {

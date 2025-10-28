@@ -1,0 +1,54 @@
+# DeepEval Configuration for Listify Agent
+# =======================================
+
+[deepeval]
+# Global configuration
+project_name = "listify-agent"
+environment = "development"
+
+# Evaluation settings
+strict_mode = true
+max_retries = 3
+timeout = 30
+
+# Logging configuration
+log_level = "INFO"
+log_file = "logs/deepeval.log"
+
+# Metrics configuration
+default_metrics = [
+    "correctness",
+    "completeness", 
+    "categorization_accuracy",
+    "quantity_extraction_accuracy"
+]
+
+# Test data configuration
+test_data_dir = "test_data"
+output_dir = "evaluation_results"
+
+# API configuration
+api_timeout = 30
+api_retries = 3
+
+# Reporting configuration
+generate_reports = true
+report_format = "json"
+include_details = true
+
+# CI/CD integration
+ci_mode = false
+fail_on_low_scores = true
+min_score_threshold = 0.7
+
+# Performance monitoring
+monitor_performance = true
+performance_threshold = 10.0  # seconds
+
+# Custom evaluation criteria
+custom_criteria = {
+    "list_extraction": "Evaluate if the AI correctly extracts items from input text, ensuring accuracy of item identification and completeness of extraction.",
+    "categorization": "Assess if items are correctly categorized into appropriate categories with logical and consistent classification.",
+    "quantity_extraction": "Evaluate if quantities are correctly extracted and identified with proper unit recognition.",
+    "completeness": "Ensure all expected items were extracted without missing important elements."
+}

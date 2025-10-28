@@ -5,6 +5,15 @@
  * This test simulates production usage to verify traces appear in Arize
  */
 
+// Load environment variables from .env file
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, 'backend', '.env') });
+
 import { initializeArizeTracing, flushTraces } from './backend/src/config/arize.js';
 import { 
   createAgentSpan, 
@@ -21,9 +30,9 @@ console.log('🧪 Production Trace Test');
 console.log('=' .repeat(50));
 
 // Initialize Arize tracing
-const { tracerProvider, tracer } = initializeArizeTracing();
+const { tracerProvider } = initializeArizeTracing();
 
-if (!tracer) {
+if (!tracerProvider) {
   console.error('❌ Failed to initialize Arize tracing');
   process.exit(1);
 }

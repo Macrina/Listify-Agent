@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import listRoutes from './routes/listRoutes.js';
+import context7Routes from './routes/context7Routes.js';
 import getPortConfig from './config/ports.js';
 import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
@@ -45,6 +46,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api', listRoutes);
+app.use('/api/context7', context7Routes);
 
 // Enhanced health endpoints
 app.get('/api/health', basicHealthCheck); // Simple health check for Render
@@ -71,17 +73,26 @@ if (process.env.NODE_ENV === 'production') {
     res.json({
       message: 'Welcome to Listify Agent API',
       version: '1.0.0',
-      endpoints: {
-        health: '/api/health',
-        uploadImage: 'POST /api/upload',
-        analyzeText: 'POST /api/analyze-text',
-        getLists: 'GET /api/lists',
-        getList: 'GET /api/lists/:id',
-        updateItem: 'PUT /api/items/:id',
-        deleteItem: 'DELETE /api/items/:id',
-        search: 'GET /api/search?q=keyword',
-        stats: 'GET /api/stats',
-      },
+        endpoints: {
+          health: '/api/health',
+          uploadImage: 'POST /api/upload',
+          analyzeText: 'POST /api/analyze-text',
+          getLists: 'GET /api/lists',
+          getList: 'GET /api/lists/:id',
+          updateItem: 'PUT /api/items/:id',
+          deleteItem: 'DELETE /api/items/:id',
+          search: 'GET /api/search?q=keyword',
+          stats: 'GET /api/stats',
+          context7: {
+            search: 'GET /api/context7/search?q=query',
+            docs: 'GET /api/context7/docs/:library',
+            examples: 'GET /api/context7/examples?topic=topic&language=js',
+            react: 'GET /api/context7/react/:component',
+            express: 'GET /api/context7/express/:topic',
+            python: 'GET /api/context7/python/:library',
+            status: 'GET /api/context7/status'
+          }
+        },
     });
   });
 }

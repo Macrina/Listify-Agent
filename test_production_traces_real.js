@@ -45,8 +45,12 @@ async function testProductionTraces() {
     });
     
     const textData = await textResponse.json();
-    console.log('✅ Text analysis successful:', textData.message);
-    console.log('📊 Items extracted:', textData.data.itemCount);
+    if (textData.success && textData.data) {
+      console.log('✅ Text analysis successful:', textData.message || 'Items extracted');
+      console.log('📊 Items extracted:', textData.data.itemCount || 0);
+    } else {
+      console.log('⚠️  Text analysis response:', textData.message || textData.error || 'Unknown response');
+    }
     
     // Test 3: Link analysis (should generate traces)
     console.log('\n3️⃣ Testing link analysis (should generate Arize traces)...');
@@ -61,7 +65,14 @@ async function testProductionTraces() {
     });
     
     const linkData = await linkResponse.json();
-    console.log('✅ Link analysis successful:', linkData.message);
+    if (linkData.success) {
+      console.log('✅ Link analysis successful:', linkData.message || 'Analysis completed');
+      if (linkData.data) {
+        console.log('📊 Items extracted:', linkData.data.itemCount || 0);
+      }
+    } else {
+      console.log('⚠️  Link analysis response:', linkData.message || linkData.error || 'Unknown response');
+    }
     
     console.log('\n🎯 Production API calls completed!');
     console.log('📊 Check your Arize dashboard for traces from these requests:');

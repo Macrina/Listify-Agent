@@ -4,9 +4,10 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: parseInt(process.env.VITE_PORT || '3000'),
     strictPort: false, // Allow fallback to other ports
     host: true, // Allow external connections
+    open: true, // Auto-open browser
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:3001',
@@ -27,9 +28,6 @@ export default defineConfig({
         },
       },
     },
-    // Fallback ports if 3000 is not available
-    port: parseInt(process.env.VITE_PORT || '3000'),
-    open: true, // Auto-open browser
   },
   build: {
     outDir: 'dist',

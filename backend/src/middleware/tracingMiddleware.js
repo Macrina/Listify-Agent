@@ -17,6 +17,7 @@ export const tracingMiddleware = (req, res, next) => {
   
   // Create span for this request with OpenInference attributes
   const span = tracer.startSpan(spanName, {
+    kind: 1, // SERVER span kind
     attributes: {
       // OpenInference span kind
       [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
@@ -51,6 +52,7 @@ export const tracingMiddleware = (req, res, next) => {
 
   // Store span on request object for later use
   req.span = span;
+  console.log(`📊 Trace: ${spanName} started`);
 
   // Monitor response
   const originalSend = res.send;
@@ -80,13 +82,12 @@ export const tracingMiddleware = (req, res, next) => {
 
     // End span
     span.end();
+    console.log(`📊 Trace: ${spanName} ended (status: ${res.statusCode})`);
 
-    // Flush traces for important operations
-    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
-      flushTraces().catch(err => {
-        console.warn('Failed to flush traces:', err.message);
-      });
-    }
+    // Always flush traces to ensure they're exported immediately
+    flushTraces().catch(err => {
+      console.warn('⚠️  Failed to flush traces:', err.message);
+    });
 
     // Call original send
     return originalSend.call(this, data);

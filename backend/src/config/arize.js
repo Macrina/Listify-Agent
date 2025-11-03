@@ -9,6 +9,7 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { Resource } from "@opentelemetry/resources";
 import { SEMRESATTRS_PROJECT_NAME } from "@arizeai/openinference-semantic-conventions";
 import { OTLPTraceExporter as GrpcOTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { diag, DiagConsoleLogger, DiagLogLevel, trace } from "@opentelemetry/api";
 import { Metadata } from "@grpc/grpc-js";
@@ -45,6 +46,7 @@ const validateArizeConfig = () => {
 };
 
 let sdk = null;
+let spanProcessor = null; // Store for manual flushing
 
 // Function to register the Arize TracerProvider (exact approach from documentation)
 const register = ({ space_id, api_key, project_name }) => {
@@ -59,6 +61,15 @@ const register = ({ space_id, api_key, project_name }) => {
   const arizeExporter = new GrpcOTLPTraceExporter({
     url: "https://otlp.arize.com/v1",
     metadata,
+  });
+
+  // Create explicit BatchSpanProcessor with export timeout
+  // Use shorter delay for faster export in development
+  spanProcessor = new BatchSpanProcessor(arizeExporter, {
+    maxQueueSize: 2048,
+    maxExportBatchSize: 512,
+    exportTimeoutMillis: 30000,
+    scheduledDelayMillis: 2000, // Export every 2 seconds instead of 5
   });
 
   // Create SDK with Arize-specific resource attributes and auto-instrumentations
@@ -90,9 +101,7 @@ const register = ({ space_id, api_key, project_name }) => {
       // Note: OpenAI instrumentation removed due to version incompatibility
       // Auto-instrumentations will trace OpenAI HTTP requests automatically
     ],
-    spanProcessorOptions: {
-      exporter: arizeExporter,
-    },
+    spanProcessor: spanProcessor,
   });
 
   // Start the SDK
@@ -139,13 +148,36 @@ export const getArizeConfig = () => ARIZE_CONFIG;
 
 // Force flush all pending spans to export immediately
 export const flushTraces = async () => {
-  if (sdk?.tracerProvider) {
-    try {
-      await sdk.tracerProvider.forceFlush();
-      console.log('✅ Traces flushed to Arize');
-    } catch (error) {
-      console.error('❌ Failed to flush traces:', error.message);
+  try {
+    // Directly flush the span processor if available
+    if (spanProcessor && typeof spanProcessor.forceFlush === 'function') {
+      await spanProcessor.forceFlush();
+      console.log('✅ Traces flushed to Arize (via spanProcessor)');
+      return true;
     }
+    
+    // Fallback: Use SDK's forceFlush method if available
+    if (sdk && typeof sdk.forceFlush === 'function') {
+      await sdk.forceFlush();
+      console.log('✅ Traces flushed to Arize (via SDK)');
+      return true;
+    }
+    
+    // Fallback: Get tracer provider and try to flush
+    const tracerProvider = trace.getTracerProvider();
+    if (tracerProvider && typeof tracerProvider.forceFlush === 'function') {
+      await tracerProvider.forceFlush();
+      console.log('✅ Traces flushed to Arize (via tracerProvider)');
+      return true;
+    }
+    
+    // If no flush method available, spans will be exported automatically by BatchSpanProcessor
+    // (every scheduledDelayMillis or when batch is full)
+    console.log('ℹ️  Traces will be auto-exported by BatchSpanProcessor');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to flush traces:', error.message);
+    return false;
   }
 };
 

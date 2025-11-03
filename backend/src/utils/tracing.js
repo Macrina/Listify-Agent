@@ -143,22 +143,30 @@ export const addGraphAttributes = (span, nodeId, parentId = null, displayName = 
 export const createLLMSpan = (name, modelName, input, attributes = {}, parentSpan = null) => {
   const tracer = getTracer();
   
-  // If parent span is provided, create child span in its context
-  let spanContext = context.active();
+  // If parent span is provided, create child span in its context using context.with
   if (parentSpan) {
-    spanContext = trace.setSpan(context.active(), parentSpan);
+    const parentContext = trace.setSpan(context.active(), parentSpan);
+    return context.with(parentContext, () => {
+      return tracer.startSpan(name, {
+        attributes: {
+          [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.LLM,
+          [SpanAttributes.LLM_MODEL_NAME]: modelName,
+          [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
+          ...attributes,
+        },
+      });
+    });
   }
   
-  const span = tracer.startSpan(name, {
+  // No parent span - create in current context
+  return tracer.startSpan(name, {
     attributes: {
       [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.LLM,
       [SpanAttributes.LLM_MODEL_NAME]: modelName,
       [SpanAttributes.INPUT_VALUE]: typeof input === 'string' ? input : JSON.stringify(input),
       ...attributes,
     },
-  }, spanContext);
-  
-  return span;
+  });
 };
 
 // Create a Tool span

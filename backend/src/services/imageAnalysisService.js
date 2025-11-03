@@ -92,9 +92,9 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-Return ONLY a valid JSON array of objects. Each object must have the structure described above.
+IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
 
-Example format:
+Example format (return this exact structure, no markdown):
 [
   {
     "item_name": "Buy milk",
@@ -172,17 +172,44 @@ If no list items are found, return an empty array: []`;
     // Parse the JSON response
     let extractedItems = [];
     try {
-      // Clean the response to extract JSON
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      // Remove markdown code blocks if present (fix for AI-identified issue)
+      let cleanedContent = content.trim();
+      
+      // Remove ```json or ``` code blocks
+      if (cleanedContent.startsWith('```')) {
+        // Remove opening ```json or ```
+        cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/i, '');
+        // Remove closing ```
+        cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
+      }
+      
+      // Try to parse as JSON array
+      const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         extractedItems = JSON.parse(jsonMatch[0]);
       } else {
-        console.warn('No JSON array found in response, trying to parse entire content');
-        extractedItems = JSON.parse(content);
+        // Try parsing the entire cleaned content
+        const parsed = JSON.parse(cleanedContent);
+        // If it's an array, use it; if it's an object with items, extract items
+        if (Array.isArray(parsed)) {
+          extractedItems = parsed;
+        } else if (parsed.items && Array.isArray(parsed.items)) {
+          extractedItems = parsed.items;
+        } else {
+          extractedItems = JSON.parse(cleanedContent);
+        }
       }
+      
+      // Track parsing success in span
+      agentSpan.setAttribute('output.parsing.success', true);
+      agentSpan.setAttribute('output.markdown_removed', content !== cleanedContent);
     } catch (parseError) {
       console.error('Failed to parse JSON response:', parseError);
       console.log('Raw content:', content);
+      
+      // Track parsing failure in span
+      agentSpan.setAttribute('output.parsing.success', false);
+      agentSpan.setAttribute('output.parsing.error', parseError.message);
       
       // Fallback: try to extract items manually
       extractedItems = [];
@@ -295,7 +322,7 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-Return ONLY a valid JSON array of objects. Each object must have the structure described above.
+IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
 
 Text to analyze:
 ${text}
@@ -340,17 +367,36 @@ If no list items are found, return an empty array: []`;
     const content = response.choices[0].message.content;
     console.log('Text analysis response:', content);
 
-    // Parse the JSON response
+    // Parse the JSON response (same logic as other analysis functions)
     let extractedItems = [];
     try {
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      // Remove markdown code blocks if present
+      let cleanedContent = content.trim();
+      if (cleanedContent.startsWith('```')) {
+        cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/i, '');
+        cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
+      }
+      
+      const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         extractedItems = JSON.parse(jsonMatch[0]);
       } else {
-        extractedItems = JSON.parse(content);
+        const parsed = JSON.parse(cleanedContent);
+        if (Array.isArray(parsed)) {
+          extractedItems = parsed;
+        } else if (parsed.items && Array.isArray(parsed.items)) {
+          extractedItems = parsed.items;
+        } else {
+          extractedItems = JSON.parse(cleanedContent);
+        }
       }
+      
+      agentSpan.setAttribute('output.parsing.success', true);
+      agentSpan.setAttribute('output.markdown_removed', content !== cleanedContent);
     } catch (parseError) {
       console.error('Failed to parse JSON response:', parseError);
+      agentSpan.setAttribute('output.parsing.success', false);
+      agentSpan.setAttribute('output.parsing.error', parseError.message);
       extractedItems = [];
     }
 
@@ -481,7 +527,7 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-Return ONLY a valid JSON array of objects. Each object must have the structure described above.
+IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
 
 Web page content:
 ${textContent.substring(0, 4000)} // Limit content to avoid token limits
@@ -513,9 +559,24 @@ If no list items are found, return an empty array: []`;
     });
 
     // Add LLM response attributes
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response_openai.usage.prompt_tokens);
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response_openai.usage.completion_tokens);
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response_openai.usage.total_tokens);
+      // Add LLM response attributes with cost calculation
+      const promptTokens = response_openai.usage.prompt_tokens;
+      const completionTokens = response_openai.usage.completion_tokens;
+      const totalTokens = response_openai.usage.total_tokens;
+      
+      // GPT-4o pricing: $2.50 per 1M input tokens, $10.00 per 1M output tokens
+      const inputCostPer1M = 2.50;
+      const outputCostPer1M = 10.00;
+      const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
+      
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
+      llmSpan.setAttribute('llm.cost_usd', cost);
+      
+      // Also add to agent span for aggregation
+      agentSpan.setAttribute('llm.token_count.total', totalTokens);
+      agentSpan.setAttribute('llm.cost_usd', cost);
     llmSpan.setAttribute('llm.response_length', response_openai.choices[0].message.content.length);
     llmSpan.setAttribute('llm.finish_reason', response_openai.choices[0].finish_reason);
 
@@ -690,7 +751,7 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-Return ONLY a valid JSON array of objects. Each object must have the structure described above.
+IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
 
 Web page content:
 ${textContent.substring(0, 8000)} // Limit content length
@@ -721,9 +782,24 @@ If no list items are found, return an empty array: []`;
     });
 
       // Add LLM response attributes
-      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response.usage.prompt_tokens);
-      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response.usage.completion_tokens);
-      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response.usage.total_tokens);
+      // Add LLM response attributes with cost calculation
+      const promptTokens = response.usage.prompt_tokens;
+      const completionTokens = response.usage.completion_tokens;
+      const totalTokens = response.usage.total_tokens;
+      
+      // GPT-4o pricing: $2.50 per 1M input tokens, $10.00 per 1M output tokens
+      const inputCostPer1M = 2.50;
+      const outputCostPer1M = 10.00;
+      const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
+      
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
+      llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
+      llmSpan.setAttribute('llm.cost_usd', cost);
+      
+      // Also add to agent span for aggregation
+      agentSpan.setAttribute('llm.token_count.total', totalTokens);
+      agentSpan.setAttribute('llm.cost_usd', cost);
       llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
       llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
 

@@ -42,9 +42,20 @@ export const tracingMiddleware = (req, res, next) => {
     try {
       const bodyStr = JSON.stringify(req.body);
       const bodyPreview = bodyStr.substring(0, 500);
-      // Use OpenInference input attribute
+      // Use OpenInference input attribute (Arize reads this for Input column)
       span.setAttribute(SpanAttributes.INPUT_VALUE, bodyStr);
       span.setAttribute('http.request.body.preview', bodyPreview);
+      // Also set as a top-level attribute for visibility
+      span.setAttribute('input', bodyStr.substring(0, 1000)); // Truncated for display
+    } catch (e) {
+      // Ignore serialization errors
+    }
+  } else if (req.query && Object.keys(req.query).length > 0) {
+    // For GET requests, include query parameters as input
+    try {
+      const queryStr = JSON.stringify(req.query);
+      span.setAttribute(SpanAttributes.INPUT_VALUE, queryStr);
+      span.setAttribute('input', queryStr);
     } catch (e) {
       // Ignore serialization errors
     }

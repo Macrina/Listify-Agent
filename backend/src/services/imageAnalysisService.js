@@ -149,12 +149,26 @@ Example correct format:
       response_format: { type: 'json_object' }, // Forces JSON output, no markdown
     });
 
-    // Add LLM response attributes
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, response.usage.prompt_tokens);
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, response.usage.completion_tokens);
-    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, response.usage.total_tokens);
+    // Add LLM response attributes with cost calculation
+    const promptTokens = response.usage.prompt_tokens;
+    const completionTokens = response.usage.completion_tokens;
+    const totalTokens = response.usage.total_tokens;
+    
+    // GPT-4o Vision pricing: $2.50 per 1M input tokens, $10.00 per 1M output tokens
+    const inputCostPer1M = 2.50;
+    const outputCostPer1M = 10.00;
+    const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
+    
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
+    llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
+    llmSpan.setAttribute('llm.cost_usd', cost);
     llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
     llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
+    
+    // Also add to agent span for aggregation
+    agentSpan.setAttribute('llm.token_count.total', totalTokens);
+    agentSpan.setAttribute('llm.cost_usd', cost);
 
     // Add output messages
     addLLMOutputMessages(llmSpan, [response.choices[0].message]);

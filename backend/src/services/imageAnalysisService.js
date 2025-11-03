@@ -25,7 +25,7 @@ import {
  * @param {Span} parentSpan - Optional parent span from API request context
  * @returns {Promise<Array>} - Array of extracted list items
  */
-export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpan = null) {
+export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpan = null, parentNodeId = null) {
   // Get active context - use parent span if provided
   const activeContext = parentSpan 
     ? trace.setSpan(context.active(), parentSpan)
@@ -47,8 +47,8 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpa
     }
   }, activeContext);
 
-  // Add graph attributes for agent visualization
-  addGraphAttributes(agentSpan, 'image_analyzer', null, 'Image Analyzer');
+  // Add graph attributes for agent visualization - link to API request if available
+  addGraphAttributes(agentSpan, 'image_analyzer', parentNodeId, 'Image Analyzer');
 
   try {
     console.log('Starting image analysis with:', {
@@ -296,7 +296,7 @@ Example correct format:
  * @param {string} text - Text to analyze
  * @returns {Promise<Array>} - Array of extracted list items
  */
-export async function analyzeText(text, parentSpan = null) {
+export async function analyzeText(text, parentSpan = null, parentNodeId = null) {
   // Get active context - use parent span if provided
   const activeContext = parentSpan 
     ? trace.setSpan(context.active(), parentSpan)
@@ -317,8 +317,8 @@ export async function analyzeText(text, parentSpan = null) {
     }
   }, activeContext);
 
-  // Add graph attributes for agent visualization
-  addGraphAttributes(agentSpan, 'text_analyzer', null, 'Text Analyzer');
+  // Add graph attributes for agent visualization - link to API request if available
+  addGraphAttributes(agentSpan, 'text_analyzer', parentNodeId, 'Text Analyzer');
 
   try {
     console.log('Starting text analysis');
@@ -530,7 +530,7 @@ ${text}`;
         * @param {string} url - URL to analyze
  * @returns {Promise<Array>} - Array of extracted list items
  */
-async function analyzeLinkWithFetch(url) {
+async function analyzeLinkWithFetch(url, parentNodeId = null) {
   // Create agent span for fetch-based link analysis
   const agentSpan = createAgentSpan('listify-agent.link-analysis-fetch', {
     'operation.type': 'link_analysis',
@@ -542,8 +542,8 @@ async function analyzeLinkWithFetch(url) {
     'service.version': '1.0.0'
   });
 
-  // Add graph attributes for agent visualization
-  addGraphAttributes(agentSpan, 'link_analyzer_fetch', null, 'Link Analyzer (Fetch)');
+  // Add graph attributes for agent visualization - link to API request if available
+  addGraphAttributes(agentSpan, 'link_analyzer_fetch', parentNodeId, 'Link Analyzer (Fetch)');
 
   try {
     console.log('Using fetch-based link analysis for:', url);
@@ -749,7 +749,7 @@ ${textContent.substring(0, 4000)}`;
         * @param {string} url - URL to analyze
         * @returns {Promise<Array>} - Array of extracted list items
         */
-export async function analyzeLink(url, parentSpan = null) {
+export async function analyzeLink(url, parentSpan = null, parentNodeId = null) {
   // Get active context - use parent span if provided
   const activeContext = parentSpan 
     ? trace.setSpan(context.active(), parentSpan)
@@ -771,8 +771,8 @@ export async function analyzeLink(url, parentSpan = null) {
     }
   }, activeContext);
 
-  // Add graph attributes for agent visualization
-  addGraphAttributes(agentSpan, 'link_analyzer', null, 'Link Analyzer');
+  // Add graph attributes for agent visualization - link to API request if available
+  addGraphAttributes(agentSpan, 'link_analyzer', parentNodeId, 'Link Analyzer');
 
   try {
     console.log('Starting link analysis for:', url);
@@ -796,7 +796,7 @@ export async function analyzeLink(url, parentSpan = null) {
       page = browserConfig.page;
     } catch (puppeteerError) {
       console.warn('⚠️ Puppeteer failed to launch, falling back to fetch-based analysis:', puppeteerError.message);
-      return await analyzeLinkWithFetch(url);
+      return await analyzeLinkWithFetch(url, parentNodeId);
     }
 
     try {

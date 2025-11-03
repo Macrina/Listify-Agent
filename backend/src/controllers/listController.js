@@ -52,9 +52,9 @@ export async function uploadImage(req, res) {
       imageData = fs.readFileSync(imagePath);
     }
 
-    // Analyze the image - pass parent span from request context
+    // Analyze the image - pass parent span and graph node ID from request context
     logger.info('Starting image analysis', { filename: req.file.originalname });
-    const extractedItems = await analyzeImage(imageData, req.file.mimetype, req.span);
+    const extractedItems = await analyzeImage(imageData, req.file.mimetype, req.span, req.graphNodeId);
     logger.info('Image analysis completed', { 
       items_extracted: extractedItems.length,
       filename: req.file.originalname
@@ -114,9 +114,9 @@ export async function analyzeTextInput(req, res) {
       });
     }
 
-    // Analyze the text - pass parent span from request context
+    // Analyze the text - pass parent span and graph node ID from request context
     console.log('Analyzing text input');
-    const extractedItems = await analyzeText(text, req.span);
+    const extractedItems = await analyzeText(text, req.span, req.graphNodeId);
 
     // Flush traces to ensure they're exported
     await flushTraces();
@@ -177,9 +177,9 @@ export async function analyzeLinkInput(req, res) {
       });
     }
 
-    // Analyze the URL - pass parent span from request context
+    // Analyze the URL - pass parent span and graph node ID from request context
     console.log('Analyzing URL:', url);
-    const extractedItems = await analyzeLink(url, req.span);
+    const extractedItems = await analyzeLink(url, req.span, req.graphNodeId);
 
     // Flush traces to ensure they're exported
     await flushTraces();

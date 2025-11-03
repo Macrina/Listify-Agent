@@ -5,7 +5,7 @@
 
 import { trace } from '@opentelemetry/api';
 import { flushTraces } from '../config/arize.js';
-import { SpanAttributes, SpanKinds } from '../utils/tracing.js';
+import { SpanAttributes, SpanKinds, addGraphAttributes } from '../utils/tracing.js';
 
 /**
  * Middleware to create spans for all API requests
@@ -61,8 +61,15 @@ export const tracingMiddleware = (req, res, next) => {
     }
   }
 
+  // Add graph attributes for agent visualization in Arize
+  // Use endpoint-based node ID for better grouping
+  const endpointNodeId = req.path.replace(/^\//, '').replace(/\//g, '_') || 'api_root';
+  const apiNodeId = `api_${req.method.toLowerCase()}_${endpointNodeId}`;
+  addGraphAttributes(span, apiNodeId, null, `${req.method} ${req.path}`);
+
   // Store span on request object for later use
   req.span = span;
+  req.graphNodeId = apiNodeId; // Store for child spans to reference
   console.log(`📊 Trace: ${spanName} started`);
 
   // Monitor response

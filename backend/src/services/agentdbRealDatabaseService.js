@@ -6,6 +6,8 @@
 // Load environment variables
 import { config } from 'dotenv';
 config();
+import { trace, context } from '@opentelemetry/api';
+import { createToolSpan, setSpanStatus, recordSpanException, SpanKinds, SpanAttributes } from '../utils/tracing.js';
 
 // AgentDB Configuration
 const agentdbConfig = {
@@ -43,6 +45,23 @@ function sleep(ms) {
 }
 
 /**
+ * Get query type from SQL statement
+ * @param {string} query - SQL query
+ * @returns {string} - Query type (SELECT, INSERT, UPDATE, DELETE, etc.)
+ */
+function getQueryType(query) {
+  const trimmed = query.trim().toUpperCase();
+  if (trimmed.startsWith('SELECT')) return 'SELECT';
+  if (trimmed.startsWith('INSERT')) return 'INSERT';
+  if (trimmed.startsWith('UPDATE')) return 'UPDATE';
+  if (trimmed.startsWith('DELETE')) return 'DELETE';
+  if (trimmed.startsWith('BEGIN')) return 'BEGIN_TRANSACTION';
+  if (trimmed.startsWith('COMMIT')) return 'COMMIT';
+  if (trimmed.startsWith('ROLLBACK')) return 'ROLLBACK';
+  return 'OTHER';
+}
+
+/**
  * Executes a SQL query using the real AgentDB MCP API with retry logic
  * @param {string} query - SQL query to execute
  * @param {Array} params - Query parameters
@@ -59,7 +78,25 @@ export async function executeQuery(query, params = [], options = {}) {
     maxDelay = 2000
   } = options;
 
+  // Create database operation span
+  const queryType = getQueryType(query);
+  const span = createToolSpan(
+    'agentdb.query',
+    'execute_sql',
+    { 
+      query: query.substring(0, 200), // Truncate for attribute size
+      params_count: params.length 
+    }
+  );
+
+  // Add database attributes
+  span.setAttribute('db.system', 'agentdb');
+  span.setAttribute('db.operation.type', queryType);
+  span.setAttribute('db.query.length', query.length);
+  span.setAttribute('db.query.params_count', params.length);
+
   let lastError;
+  const startTime = Date.now();
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -70,9 +107,11 @@ export async function executeQuery(query, params = [], options = {}) {
         const totalDelay = delay + jitter;
         
         console.log(`🔄 Retrying AgentDB query (attempt ${attempt}/${maxRetries}) after ${Math.round(totalDelay)}ms...`);
+        span.addEvent('retry_attempt', { attempt, delay_ms: totalDelay });
         await sleep(totalDelay);
       }
 
+      span.setAttribute('db.retry.attempt', attempt);
       console.log('Executing real AgentDB query:', query, params);
       console.log('Using URL:', agentdbConfig.mcpUrl);
       console.log('Using API Key:', agentdbConfig.apiKey.substring(0, 20) + '...');
@@ -155,6 +194,18 @@ export async function executeQuery(query, params = [], options = {}) {
             }
           }
           
+          // Add success metrics to span
+          const duration = Date.now() - startTime;
+          const rowsReturned = parsedData?.results?.[0]?.rows?.length || 0;
+          const changes = parsedData?.results?.[0]?.changes || 0;
+          
+          span.setAttribute('db.query.duration_ms', duration);
+          span.setAttribute('db.rows.returned', rowsReturned);
+          span.setAttribute('db.rows.changed', changes);
+          span.setAttribute('db.success', true);
+          setSpanStatus(span, true);
+          span.end();
+          
           return parsedData;
         } catch (parseError) {
           console.log('Failed to parse MCP response:', parseError.message);
@@ -164,6 +215,13 @@ export async function executeQuery(query, params = [], options = {}) {
       
       // If no content, return empty result
       console.log('No content in MCP response, returning empty result');
+      const duration = Date.now() - startTime;
+      span.setAttribute('db.query.duration_ms', duration);
+      span.setAttribute('db.rows.returned', 0);
+      span.setAttribute('db.success', true);
+      setSpanStatus(span, true);
+      span.end();
+      
       return {
         success: true,
         results: [{
@@ -184,6 +242,14 @@ export async function executeQuery(query, params = [], options = {}) {
         continue; // Retry
       } else {
         // Non-retryable error or max retries reached
+        const duration = Date.now() - startTime;
+        span.setAttribute('db.query.duration_ms', duration);
+        span.setAttribute('db.success', false);
+        span.setAttribute('db.error', error.message);
+        span.setAttribute('db.error.type', error.constructor.name);
+        recordSpanException(span, error);
+        span.end();
+        
         console.error('❌ AgentDB query error (non-retryable or max retries reached):', error.message);
         throw new Error(`Database query failed: ${error.message}`);
       }
@@ -191,6 +257,15 @@ export async function executeQuery(query, params = [], options = {}) {
   }
   
   // If we get here, all retries were exhausted
+  const duration = Date.now() - startTime;
+  span.setAttribute('db.query.duration_ms', duration);
+  span.setAttribute('db.success', false);
+  span.setAttribute('db.error', `Failed after ${maxRetries + 1} attempts`);
+  if (lastError) {
+    recordSpanException(span, lastError);
+  }
+  span.end();
+  
   throw new Error(`Database query failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
 }
 

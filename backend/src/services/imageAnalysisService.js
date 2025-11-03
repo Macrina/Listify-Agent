@@ -4,8 +4,8 @@ import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import { launchOptimizedBrowser, navigateWithFallback } from '../utils/puppeteerConfig.js';
+import { trace, context } from '@opentelemetry/api';
 import { 
-  createAgentSpan, 
   createLLMSpan, 
   addLLMInputMessages, 
   addLLMOutputMessages, 
@@ -22,19 +22,30 @@ import {
  * Analyzes an image and extracts list items using OpenAI Vision
  * @param {Buffer|string} imageData - Image buffer or file path
  * @param {string} mimeType - MIME type of the image
+ * @param {Span} parentSpan - Optional parent span from API request context
  * @returns {Promise<Array>} - Array of extracted list items
  */
-export async function analyzeImage(imageData, mimeType = 'image/jpeg') {
-  // Create agent span for image analysis
-  const agentSpan = createAgentSpan('listify-agent.image-analysis', {
-    [SpanAttributes.INPUT_MIME_TYPE]: mimeType,
-    'operation.type': 'image_analysis',
-    'operation.category': 'ai_vision',
-    'agent.name': 'listify-agent',
-    'agent.version': '1.0.0',
-    'service.name': 'listify-agent',
-    'service.version': '1.0.0'
-  });
+export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpan = null) {
+  // Get active context - use parent span if provided
+  const activeContext = parentSpan 
+    ? trace.setSpan(context.active(), parentSpan)
+    : context.active();
+  
+  const tracer = trace.getTracer('listify-agent', '1.0.0');
+  
+  // Create agent span for image analysis - linked to parent span
+  const agentSpan = tracer.startSpan('listify-agent.image-analysis', {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      [SpanAttributes.INPUT_MIME_TYPE]: mimeType,
+      'operation.type': 'image_analysis',
+      'operation.category': 'ai_vision',
+      'agent.name': 'listify-agent',
+      'agent.version': '1.0.0',
+      'service.name': 'listify-agent',
+      'service.version': '1.0.0'
+    }
+  }, activeContext);
 
   // Add graph attributes for agent visualization
   addGraphAttributes(agentSpan, 'image_analyzer', null, 'Image Analyzer');
@@ -241,16 +252,26 @@ If no list items are found, return an empty array: []`;
  * @param {string} text - Text to analyze
  * @returns {Promise<Array>} - Array of extracted list items
  */
-export async function analyzeText(text) {
-  // Create agent span for text analysis
-  const agentSpan = createAgentSpan('listify-agent.text-analysis', {
-    'operation.type': 'text_analysis',
-    'operation.category': 'ai_text',
-    'agent.name': 'listify-agent',
-    'agent.version': '1.0.0',
-    'service.name': 'listify-agent',
-    'service.version': '1.0.0'
-  });
+export async function analyzeText(text, parentSpan = null) {
+  // Get active context - use parent span if provided
+  const activeContext = parentSpan 
+    ? trace.setSpan(context.active(), parentSpan)
+    : context.active();
+  
+  const tracer = trace.getTracer('listify-agent', '1.0.0');
+  
+  // Create agent span for text analysis - linked to parent span
+  const agentSpan = tracer.startSpan('listify-agent.text-analysis', {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      'operation.type': 'text_analysis',
+      'operation.category': 'ai_text',
+      'agent.name': 'listify-agent',
+      'agent.version': '1.0.0',
+      'service.name': 'listify-agent',
+      'service.version': '1.0.0'
+    }
+  }, activeContext);
 
   // Add graph attributes for agent visualization
   addGraphAttributes(agentSpan, 'text_analyzer', null, 'Text Analyzer');
@@ -588,17 +609,27 @@ If no list items are found, return an empty array: []`;
         * @param {string} url - URL to analyze
         * @returns {Promise<Array>} - Array of extracted list items
         */
-       export async function analyzeLink(url) {
-  // Create agent span for link analysis
-  const agentSpan = createAgentSpan('listify-agent.link-analysis', {
-    'operation.type': 'link_analysis',
-    'operation.category': 'web_scraping',
-    'operation.method': 'puppeteer',
-    'agent.name': 'listify-agent',
-    'agent.version': '1.0.0',
-    'service.name': 'listify-agent',
-    'service.version': '1.0.0'
-  });
+export async function analyzeLink(url, parentSpan = null) {
+  // Get active context - use parent span if provided
+  const activeContext = parentSpan 
+    ? trace.setSpan(context.active(), parentSpan)
+    : context.active();
+  
+  const tracer = trace.getTracer('listify-agent', '1.0.0');
+  
+  // Create agent span for link analysis - linked to parent span
+  const agentSpan = tracer.startSpan('listify-agent.link-analysis', {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      'operation.type': 'link_analysis',
+      'operation.category': 'web_scraping',
+      'operation.method': 'puppeteer',
+      'agent.name': 'listify-agent',
+      'agent.version': '1.0.0',
+      'service.name': 'listify-agent',
+      'service.version': '1.0.0'
+    }
+  }, activeContext);
 
   // Add graph attributes for agent visualization
   addGraphAttributes(agentSpan, 'link_analyzer', null, 'Link Analyzer');

@@ -16,6 +16,7 @@ import { Metadata } from "@grpc/grpc-js";
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +81,13 @@ const register = ({ space_id, api_key, project_name }) => {
       "model_version": "v1.0.0",
       "service.name": "listify-agent",
       "service.version": "1.0.0",
+      "service.instance.id": os.hostname(), // Machine identifier
+      "deployment.environment": process.env.NODE_ENV || 'development',
+      "deployment.region": process.env.DEPLOY_REGION || 'local',
+      "deployment.version": process.env.DEPLOY_VERSION || '1.0.0',
+      "host.name": os.hostname(),
+      "host.type": os.type(),
+      "host.arch": os.arch(),
     }),
     instrumentations: [
       // Auto-instrumentations for HTTP, Express, Fetch, etc.

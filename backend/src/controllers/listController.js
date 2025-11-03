@@ -48,9 +48,9 @@ export async function uploadImage(req, res) {
       imageData = fs.readFileSync(imagePath);
     }
 
-    // Analyze the image
+    // Analyze the image - pass parent span from request context
     console.log('Starting image analysis for:', req.file.originalname);
-    const extractedItems = await analyzeImage(imageData, req.file.mimetype);
+    const extractedItems = await analyzeImage(imageData, req.file.mimetype, req.span);
     console.log('Image analysis completed, extracted items:', extractedItems.length);
 
     // Flush traces to ensure they're exported
@@ -107,9 +107,9 @@ export async function analyzeTextInput(req, res) {
       });
     }
 
-    // Analyze the text
+    // Analyze the text - pass parent span from request context
     console.log('Analyzing text input');
-    const extractedItems = await analyzeText(text);
+    const extractedItems = await analyzeText(text, req.span);
 
     // Flush traces to ensure they're exported
     await flushTraces();
@@ -158,9 +158,9 @@ export async function analyzeLinkInput(req, res) {
       });
     }
 
-    // Analyze the URL
+    // Analyze the URL - pass parent span from request context
     console.log('Analyzing URL:', url);
-    const extractedItems = await analyzeLink(url);
+    const extractedItems = await analyzeLink(url, req.span);
 
     // Flush traces to ensure they're exported
     await flushTraces();

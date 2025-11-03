@@ -9,6 +9,8 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { Resource } from "@opentelemetry/resources";
 import { SEMRESATTRS_PROJECT_NAME } from "@arizeai/openinference-semantic-conventions";
 import { OTLPTraceExporter as GrpcOTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OpenInferenceOpenAIInstrumentation } from "@arizeai/openinference-instrumentation-openai";
 import { diag, DiagConsoleLogger, DiagLogLevel, trace } from "@opentelemetry/api";
 import { Metadata } from "@grpc/grpc-js";
 import dotenv from 'dotenv';
@@ -60,7 +62,7 @@ const register = ({ space_id, api_key, project_name }) => {
     metadata,
   });
 
-  // Create SDK with Arize-specific resource attributes
+  // Create SDK with Arize-specific resource attributes and auto-instrumentations
   sdk = new NodeSDK({
     resource: new Resource({
       [SEMRESATTRS_PROJECT_NAME]: project_name,
@@ -69,6 +71,25 @@ const register = ({ space_id, api_key, project_name }) => {
       "service.name": "listify-agent",
       "service.version": "1.0.0",
     }),
+    instrumentations: [
+      // Auto-instrumentations for HTTP, Express, Fetch, etc.
+      getNodeAutoInstrumentations({
+        // Enable HTTP/HTTPS instrumentation for Express routes
+        '@opentelemetry/instrumentation-http': {
+          enabled: true,
+        },
+        // Enable Express instrumentation
+        '@opentelemetry/instrumentation-express': {
+          enabled: true,
+        },
+        // Enable fetch instrumentation for node-fetch
+        '@opentelemetry/instrumentation-fetch': {
+          enabled: true,
+        },
+      }),
+      // Arize OpenAI instrumentation for LLM tracing
+      new OpenInferenceOpenAIInstrumentation(),
+    ],
     spanProcessorOptions: {
       exporter: arizeExporter,
     },
@@ -77,6 +98,7 @@ const register = ({ space_id, api_key, project_name }) => {
   // Start the SDK
   sdk.start();
   console.log("📡 OpenTelemetry initialized - sending traces to Arize");
+  console.log("✅ Auto-instrumentations enabled: HTTP, Express, Fetch, OpenAI");
   
   return sdk;
 };

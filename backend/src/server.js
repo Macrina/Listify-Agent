@@ -11,6 +11,7 @@ import { getCorsConfig } from './config/cors.js';
 import { getPortWithFallback } from './utils/portUtils.js';
 import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
 import { initializeArizeTracing } from './config/arize.js';
+import { tracingMiddleware, tracingErrorHandler } from './middleware/tracingMiddleware.js';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +40,9 @@ const __dirname = path.dirname(__filename);
 
 // Middleware
 app.use(cors(getCorsConfig()));
+
+// Tracing middleware - must be before routes to capture all API calls
+app.use('/api', tracingMiddleware);
 
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' }));

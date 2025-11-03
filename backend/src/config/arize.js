@@ -10,7 +10,6 @@ import { Resource } from "@opentelemetry/resources";
 import { SEMRESATTRS_PROJECT_NAME } from "@arizeai/openinference-semantic-conventions";
 import { OTLPTraceExporter as GrpcOTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OpenInferenceOpenAIInstrumentation } from "@arizeai/openinference-instrumentation-openai";
 import { diag, DiagConsoleLogger, DiagLogLevel, trace } from "@opentelemetry/api";
 import { Metadata } from "@grpc/grpc-js";
 import dotenv from 'dotenv';
@@ -73,6 +72,7 @@ const register = ({ space_id, api_key, project_name }) => {
     }),
     instrumentations: [
       // Auto-instrumentations for HTTP, Express, Fetch, etc.
+      // This will automatically trace all HTTP requests including OpenAI API calls
       getNodeAutoInstrumentations({
         // Enable HTTP/HTTPS instrumentation for Express routes
         '@opentelemetry/instrumentation-http': {
@@ -87,8 +87,8 @@ const register = ({ space_id, api_key, project_name }) => {
           enabled: true,
         },
       }),
-      // Arize OpenAI instrumentation for LLM tracing
-      new OpenInferenceOpenAIInstrumentation(),
+      // Note: OpenAI instrumentation removed due to version incompatibility
+      // Auto-instrumentations will trace OpenAI HTTP requests automatically
     ],
     spanProcessorOptions: {
       exporter: arizeExporter,

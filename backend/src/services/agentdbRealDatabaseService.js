@@ -15,87 +15,166 @@ const agentdbConfig = {
 };
 
 /**
- * Executes a SQL query using the real AgentDB MCP API
+ * Check if an error is retryable (transient database errors)
+ * @param {Error|Object} error - The error to check
+ * @returns {boolean} - True if the error is retryable
+ */
+function isRetryableError(error) {
+  const errorMessage = error?.message || error?.error || '';
+  const lowerMessage = errorMessage.toLowerCase();
+  
+  // Check for retryable errors
+  return (
+    lowerMessage.includes('database is locked') ||
+    lowerMessage.includes('failed to acquire lease') ||
+    lowerMessage.includes('timeout') ||
+    lowerMessage.includes('connection') ||
+    lowerMessage.includes('temporary')
+  );
+}
+
+/**
+ * Sleep for a given number of milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Executes a SQL query using the real AgentDB MCP API with retry logic
  * @param {string} query - SQL query to execute
  * @param {Array} params - Query parameters
+ * @param {Object} options - Retry options
+ * @param {number} options.maxRetries - Maximum number of retries (default: 3)
+ * @param {number} options.initialDelay - Initial delay in ms (default: 100)
+ * @param {number} options.maxDelay - Maximum delay in ms (default: 2000)
  * @returns {Promise<Object>} - Query result
  */
-export async function executeQuery(query, params = []) {
-  try {
-    console.log('Executing real AgentDB query:', query, params);
-    console.log('Using URL:', agentdbConfig.mcpUrl);
-    console.log('Using API Key:', agentdbConfig.apiKey.substring(0, 20) + '...');
-    
-    // Use the correct AgentDB API format
-    const { default: fetch } = await import('node-fetch');
-    
-    const requestBody = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'tools/call',
-      params: {
-        name: 'execute_sql',
-        arguments: {
-          statements: [{
-            sql: query,
-            params: params
-          }]
+export async function executeQuery(query, params = [], options = {}) {
+  const {
+    maxRetries = 3,
+    initialDelay = 100,
+    maxDelay = 2000
+  } = options;
+
+  let lastError;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Calculate exponential backoff delay
+        const delay = Math.min(initialDelay * Math.pow(2, attempt - 1), maxDelay);
+        const jitter = Math.random() * 100; // Add jitter to avoid thundering herd
+        const totalDelay = delay + jitter;
+        
+        console.log(`🔄 Retrying AgentDB query (attempt ${attempt}/${maxRetries}) after ${Math.round(totalDelay)}ms...`);
+        await sleep(totalDelay);
+      }
+
+      console.log('Executing real AgentDB query:', query, params);
+      console.log('Using URL:', agentdbConfig.mcpUrl);
+      console.log('Using API Key:', agentdbConfig.apiKey.substring(0, 20) + '...');
+      
+      // Use the correct AgentDB API format
+      const { default: fetch } = await import('node-fetch');
+      
+      const requestBody = {
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'tools/call',
+        params: {
+          name: 'execute_sql',
+          arguments: {
+            statements: [{
+              sql: query,
+              params: params
+            }]
+          }
+        }
+      };
+      
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+      
+      const response = await fetch(agentdbConfig.mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${agentdbConfig.apiKey}`
+        },
+        body: JSON.stringify(requestBody),
+        // Add timeout to prevent hanging requests
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('AgentDB MCP response:', result);
+      
+      if (result.error) {
+        throw new Error(`AgentDB MCP error: ${result.error.message}`);
+      }
+      
+      // Transform the MCP response to match our expected format
+      const mcpResult = result.result;
+      if (mcpResult.content && mcpResult.content[0] && mcpResult.content[0].text) {
+        try {
+          const parsedData = JSON.parse(mcpResult.content[0].text);
+          console.log('Parsed AgentDB data:', parsedData);
+          
+          // Check if the parsed data contains an error (database lock, etc.)
+          if (parsedData.results && parsedData.results[0] && parsedData.results[0].error) {
+            const dbError = parsedData.results[0].error;
+            if (isRetryableError(dbError) && attempt < maxRetries) {
+              lastError = new Error(`Database error: ${dbError}`);
+              continue; // Retry
+            } else {
+              // Non-retryable error or max retries reached
+              throw new Error(`Database error: ${dbError}`);
+            }
+          }
+          
+          return parsedData;
+        } catch (parseError) {
+          console.log('Failed to parse MCP response:', parseError.message);
+          throw new Error(`Failed to parse AgentDB response: ${parseError.message}`);
         }
       }
-    };
-    
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
-    
-    const response = await fetch(agentdbConfig.mcpUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${agentdbConfig.apiKey}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('AgentDB MCP response:', result);
-    
-    if (result.error) {
-      throw new Error(`AgentDB MCP error: ${result.error.message}`);
-    }
-    
-    // Transform the MCP response to match our expected format
-    const mcpResult = result.result;
-    if (mcpResult.content && mcpResult.content[0] && mcpResult.content[0].text) {
-      try {
-        const parsedData = JSON.parse(mcpResult.content[0].text);
-        console.log('Parsed AgentDB data:', parsedData);
-        return parsedData;
-      } catch (parseError) {
-        console.log('Failed to parse MCP response:', parseError.message);
-        throw new Error(`Failed to parse AgentDB response: ${parseError.message}`);
+      
+      // If no content, return empty result
+      console.log('No content in MCP response, returning empty result');
+      return {
+        success: true,
+        results: [{
+          rows: [],
+          totalRows: 0,
+          offset: 0,
+          limit: 100,
+          changes: 0
+        }]
+      };
+
+    } catch (error) {
+      lastError = error;
+      
+      // Check if this is a retryable error
+      if (isRetryableError(error) && attempt < maxRetries) {
+        console.warn(`⚠️  AgentDB query failed (attempt ${attempt + 1}/${maxRetries + 1}): ${error.message}`);
+        continue; // Retry
+      } else {
+        // Non-retryable error or max retries reached
+        console.error('❌ AgentDB query error (non-retryable or max retries reached):', error.message);
+        throw new Error(`Database query failed: ${error.message}`);
       }
     }
-    
-    // If no content, return empty result
-    console.log('No content in MCP response, returning empty result');
-    return {
-      success: true,
-      results: [{
-        rows: [],
-        totalRows: 0,
-        offset: 0,
-        limit: 100,
-        changes: 0
-      }]
-    };
-
-  } catch (error) {
-    console.error('AgentDB query error:', error.message);
-    throw new Error(`Database query failed: ${error.message}`);
   }
+  
+  // If we get here, all retries were exhausted
+  throw new Error(`Database query failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
 }
 
 /**

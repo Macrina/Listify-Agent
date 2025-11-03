@@ -556,8 +556,9 @@ export async function createNewList(req, res) {
       throw new Error('Failed to create list');
     }
 
-    // Insert items into the new list
-    const itemInserts = items.map(async (item) => {
+    // Insert items into the new list sequentially to avoid database lock issues
+    // AgentDB has issues with too many concurrent writes
+    for (const item of items) {
       const itemQuery = `
         INSERT INTO list_items (
           list_id, item_name, category, quantity,
@@ -581,7 +582,8 @@ export async function createNewList(req, res) {
         validSourceType = 'audio';
       }
 
-      return executeQuery(itemQuery, [
+      // Insert items one at a time to avoid overwhelming AgentDB's lease system
+      await executeQuery(itemQuery, [
         listId,
         item.item_name,
         item.category || 'other',
@@ -591,9 +593,7 @@ export async function createNewList(req, res) {
         validSourceType,
         item.metadata ? JSON.stringify(item.metadata) : null
       ]);
-    });
-
-    await Promise.all(itemInserts);
+    }
 
     // Get the created list with items
     const newList = await getListItems(listId);

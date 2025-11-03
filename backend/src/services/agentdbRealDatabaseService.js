@@ -127,14 +127,31 @@ export async function executeQuery(query, params = [], options = {}) {
           console.log('Parsed AgentDB data:', parsedData);
           
           // Check if the parsed data contains an error (database lock, etc.)
-          if (parsedData.results && parsedData.results[0] && parsedData.results[0].error) {
-            const dbError = parsedData.results[0].error;
-            if (isRetryableError(dbError) && attempt < maxRetries) {
-              lastError = new Error(`Database error: ${dbError}`);
-              continue; // Retry
-            } else {
-              // Non-retryable error or max retries reached
-              throw new Error(`Database error: ${dbError}`);
+          if (parsedData.results && parsedData.results[0]) {
+            // Check for error field (database lock, etc.)
+            if (parsedData.results[0].error) {
+              const dbError = parsedData.results[0].error;
+              const errorMsg = typeof dbError === 'string' ? dbError : (dbError.message || String(dbError));
+              if (isRetryableError(errorMsg) && attempt < maxRetries) {
+                lastError = new Error(`Database error: ${errorMsg}`);
+                console.warn(`⚠️  Database error detected (attempt ${attempt + 1}/${maxRetries + 1}): ${errorMsg}`);
+                continue; // Retry
+              } else {
+                // Non-retryable error or max retries reached
+                throw new Error(`Database error: ${errorMsg}`);
+              }
+            }
+            
+            // Also check if success is false
+            if (parsedData.success === false && parsedData.error) {
+              const errorMsg = parsedData.error;
+              if (isRetryableError(errorMsg) && attempt < maxRetries) {
+                lastError = new Error(`Database error: ${errorMsg}`);
+                console.warn(`⚠️  Database error detected (attempt ${attempt + 1}/${maxRetries + 1}): ${errorMsg}`);
+                continue; // Retry
+              } else {
+                throw new Error(`Database error: ${errorMsg}`);
+              }
             }
           }
           
@@ -237,10 +254,12 @@ export async function saveListItems(items, source = 'image', sourceMetadata = nu
         throw new Error('Failed to create list in AgentDB');
       }
       
-      // Insert items
+      // Insert items sequentially to avoid database lock issues
+      // AgentDB has issues with too many concurrent writes within a transaction
       console.log(`Inserting ${items.length} items for listId: ${listId}`);
       
-      const itemInserts = items.map(async (item, index) => {
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
         const itemQuery = `
           INSERT INTO list_items (
             list_id, item_name, category, quantity,
@@ -275,15 +294,13 @@ export async function saveListItems(items, source = 'image', sourceMetadata = nu
           sourceMetadata ? JSON.stringify(sourceMetadata) : null
         ];
         
-        console.log(`Inserting item ${index + 1}:`, item.item_name, 'with params:', params);
+        console.log(`Inserting item ${index + 1}/${items.length}:`, item.item_name);
         
+        // Insert items one at a time to avoid overwhelming AgentDB's lease system
         const result = await executeQuery(itemQuery, params);
-        console.log(`Item ${index + 1} inserted successfully:`, result);
-        return result;
-      });
+        console.log(`Item ${index + 1} inserted successfully`);
+      }
       
-      // Wait for all items to be inserted
-      await Promise.all(itemInserts);
       console.log('All items inserted successfully');
       
       // Commit transaction

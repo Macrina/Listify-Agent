@@ -52,16 +52,33 @@ export async function uploadImage(req, res) {
       imageData = fs.readFileSync(imagePath);
     }
 
+    // Update span with file information if available
+    if (req.span && req.file) {
+      req.span.setAttribute('http.request.file.name', req.file.originalname);
+      req.span.setAttribute('http.request.file.type', req.file.mimetype);
+      req.span.setAttribute('http.request.file.size', req.file.size);
+      const fileInfo = {
+        filename: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      };
+      req.span.setAttribute('input', JSON.stringify(fileInfo));
+    }
+
     // Analyze the image - pass parent span and graph node ID from request context
     logger.info('Starting image analysis', { filename: req.file.originalname });
+    console.log('📊 Image analysis: parent span exists?', !!req.span, 'graphNodeId:', req.graphNodeId);
     const extractedItems = await analyzeImage(imageData, req.file.mimetype, req.span, req.graphNodeId);
     logger.info('Image analysis completed', { 
       items_extracted: extractedItems.length,
       filename: req.file.originalname
     });
+    console.log('📊 Image analysis completed, extracted', extractedItems.length, 'items');
 
-    // Flush traces to ensure they're exported
+    // Flush traces to ensure they're exported immediately
+    console.log('📊 Flushing traces after image analysis...');
     await flushTraces();
+    console.log('✅ Traces flushed after image analysis');
 
     // Clean up uploaded file (only for disk storage)
     if (req.file.path) {

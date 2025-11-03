@@ -38,28 +38,54 @@ export const tracingMiddleware = (req, res, next) => {
   });
 
   // Add request context with OpenInference input attributes
-  if (req.body && Object.keys(req.body).length > 0) {
-    try {
-      const bodyStr = JSON.stringify(req.body);
-      const bodyPreview = bodyStr.substring(0, 500);
-      // Use OpenInference input attribute (Arize reads this for Input column)
-      span.setAttribute(SpanAttributes.INPUT_VALUE, bodyStr);
-      span.setAttribute('http.request.body.preview', bodyPreview);
-      // Also set as a top-level attribute for visibility
-      span.setAttribute('input', bodyStr.substring(0, 1000)); // Truncated for display
-    } catch (e) {
-      // Ignore serialization errors
+  // Handle multipart/form-data (file uploads) after multer processes them
+  const addInputAttributes = () => {
+    if (req.file) {
+      // For file uploads, include file metadata as input
+      try {
+        const fileInfo = {
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          fieldname: req.file.fieldname
+        };
+        const fileInfoStr = JSON.stringify(fileInfo);
+        span.setAttribute(SpanAttributes.INPUT_VALUE, fileInfoStr);
+        span.setAttribute('input', fileInfoStr);
+        span.setAttribute('http.request.file.name', req.file.originalname);
+        span.setAttribute('http.request.file.type', req.file.mimetype);
+        span.setAttribute('http.request.file.size', req.file.size);
+      } catch (e) {
+        // Ignore serialization errors
+      }
+    } else if (req.body && Object.keys(req.body).length > 0) {
+      try {
+        const bodyStr = JSON.stringify(req.body);
+        const bodyPreview = bodyStr.substring(0, 500);
+        // Use OpenInference input attribute (Arize reads this for Input column)
+        span.setAttribute(SpanAttributes.INPUT_VALUE, bodyStr);
+        span.setAttribute('http.request.body.preview', bodyPreview);
+        // Also set as a top-level attribute for visibility
+        span.setAttribute('input', bodyStr.substring(0, 1000)); // Truncated for display
+      } catch (e) {
+        // Ignore serialization errors
+      }
+    } else if (req.query && Object.keys(req.query).length > 0) {
+      // For GET requests, include query parameters as input
+      try {
+        const queryStr = JSON.stringify(req.query);
+        span.setAttribute(SpanAttributes.INPUT_VALUE, queryStr);
+        span.setAttribute('input', queryStr);
+      } catch (e) {
+        // Ignore serialization errors
+      }
     }
-  } else if (req.query && Object.keys(req.query).length > 0) {
-    // For GET requests, include query parameters as input
-    try {
-      const queryStr = JSON.stringify(req.query);
-      span.setAttribute(SpanAttributes.INPUT_VALUE, queryStr);
-      span.setAttribute('input', queryStr);
-    } catch (e) {
-      // Ignore serialization errors
-    }
-  }
+  };
+
+  // For multipart/form-data, we need to wait until multer processes the file
+  // So we'll add input attributes in the route handler if needed, or use a hook
+  // For now, try to add what we can, and the route handler can update if needed
+  addInputAttributes();
 
   // Add graph attributes for agent visualization in Arize
   // Use endpoint-based node ID for better grouping

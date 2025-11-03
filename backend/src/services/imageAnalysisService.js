@@ -530,17 +530,27 @@ ${text}`;
         * @param {string} url - URL to analyze
  * @returns {Promise<Array>} - Array of extracted list items
  */
-async function analyzeLinkWithFetch(url, parentNodeId = null) {
+async function analyzeLinkWithFetch(url, parentSpan = null, parentNodeId = null) {
+  // Get active context - use parent span if provided
+  const activeContext = parentSpan 
+    ? trace.setSpan(context.active(), parentSpan)
+    : context.active();
+  
+  const tracer = trace.getTracer('listify-agent', '1.0.0');
+  
   // Create agent span for fetch-based link analysis
-  const agentSpan = createAgentSpan('listify-agent.link-analysis-fetch', {
-    'operation.type': 'link_analysis',
-    'operation.category': 'web_scraping',
-    'operation.method': 'fetch',
-    'agent.name': 'listify-agent',
-    'agent.version': '1.0.0',
-    'service.name': 'listify-agent',
-    'service.version': '1.0.0'
-  });
+  const agentSpan = tracer.startSpan('listify-agent.link-analysis-fetch', {
+    attributes: {
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      'operation.type': 'link_analysis',
+      'operation.category': 'web_scraping',
+      'operation.method': 'fetch',
+      'agent.name': 'listify-agent',
+      'agent.version': '1.0.0',
+      'service.name': 'listify-agent',
+      'service.version': '1.0.0'
+    }
+  }, activeContext);
 
   // Add graph attributes for agent visualization - link to API request if available
   addGraphAttributes(agentSpan, 'link_analyzer_fetch', parentNodeId, 'Link Analyzer (Fetch)');
@@ -796,7 +806,7 @@ export async function analyzeLink(url, parentSpan = null, parentNodeId = null) {
       page = browserConfig.page;
     } catch (puppeteerError) {
       console.warn('⚠️ Puppeteer failed to launch, falling back to fetch-based analysis:', puppeteerError.message);
-      return await analyzeLinkWithFetch(url, parentNodeId);
+      return await analyzeLinkWithFetch(url, parentSpan, parentNodeId);
     }
 
     try {
@@ -994,7 +1004,7 @@ ${textContent.substring(0, 8000)}`;
       });
       agentSpan.end();
       
-      return await analyzeLinkWithFetch(url, parentNodeId);
+      return await analyzeLinkWithFetch(url, parentSpan, parentNodeId);
     }
 
   } catch (error) {

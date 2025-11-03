@@ -15,7 +15,8 @@ import {
   addSpanTags,
   addGraphAttributes,
   SpanKinds,
-  SpanAttributes
+  SpanAttributes,
+  createToolSpan
 } from '../utils/tracing.js';
 
 /**
@@ -33,13 +34,15 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpa
   
   const tracer = trace.getTracer('listify-agent', '1.0.0');
   
-  // Create agent span for image analysis - linked to parent span
-  const agentSpan = tracer.startSpan('listify-agent.image-analysis', {
+  // Create agent span with descriptive naming for semantic analysis
+  const agentSpan = tracer.startSpan('listify-agent.vision.semantic_analysis', {
     attributes: {
       [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
       [SpanAttributes.INPUT_MIME_TYPE]: mimeType,
-      'operation.type': 'image_analysis',
+      'operation.type': 'semantic_analysis',
+      'operation.method': 'openai_vision',
       'operation.category': 'ai_vision',
+      'operation.task': 'list_extraction',
       'agent.name': 'listify-agent',
       'agent.version': '1.0.0',
       'service.name': 'listify-agent',
@@ -48,7 +51,11 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpa
   }, activeContext);
 
   // Add graph attributes for agent visualization - link to API request if available
-  addGraphAttributes(agentSpan, 'image_analyzer', parentNodeId, 'Image Analyzer');
+  addGraphAttributes(agentSpan, 'vision_semantic_analyzer', parentNodeId, 'Vision Semantic Analyzer');
+
+  // Track overall timing
+  const overallStartTime = Date.now();
+  const stageTimings = {};
 
   try {
     console.log('Starting image analysis with:', {
@@ -57,31 +64,120 @@ export async function analyzeImage(imageData, mimeType = 'image/jpeg', parentSpa
       dataSize: Buffer.isBuffer(imageData) ? imageData.length : 'N/A'
     });
 
-    // Add input attributes
-    agentSpan.setAttribute('input.image_size_bytes', Buffer.isBuffer(imageData) ? imageData.length : 0);
-    agentSpan.setAttribute('input.image_size_mb', Buffer.isBuffer(imageData) ? Math.round(imageData.length / (1024 * 1024) * 100) / 100 : 0);
-    agentSpan.setAttribute('input.format', mimeType.split('/')[-1] || 'unknown');
+    // ============================================
+    // STAGE 1: Image Preparation & Metadata Extraction
+    // ============================================
+    const prepStartTime = Date.now();
+    const prepSpan = tracer.startSpan('listify-agent.vision.image_preparation', {
+      attributes: {
+        [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.TOOL,
+        'tool.name': 'image_preparation',
+        'tool.operation': 'extract_metadata_and_encode'
+      }
+    }, trace.setSpan(context.active(), agentSpan));
 
+    // Handle both memory storage (production) and disk storage (development)
     let imageBuffer;
     if (Buffer.isBuffer(imageData)) {
       // Buffer from memory storage (production)
       console.log('Processing buffer data (production)');
       imageBuffer = imageData;
+      prepSpan.addEvent('source_type', { type: 'memory_buffer' });
     } else {
       // File path from disk storage (development)
       console.log('Processing file path (development):', imageData);
       imageBuffer = fs.readFileSync(imageData);
+      prepSpan.addEvent('source_type', { type: 'file_path', path: imageData });
     }
     
-    const base64Image = imageBuffer.toString('base64');
-    console.log('Image converted to base64, length:', base64Image.length);
+    // Extract image metadata
+    const imageSizeBytes = imageBuffer.length;
+    const imageSizeMB = Math.round(imageSizeBytes / (1024 * 1024) * 100) / 100;
+    const format = mimeType.split('/')[1] || 'unknown';
+    
+    // Try to get image dimensions (basic parsing for PNG/JPEG)
+    let imageWidth = null;
+    let imageHeight = null;
+    let imageAspectRatio = null;
+    
+    try {
+      if (format === 'png' && imageBuffer.length > 24) {
+        // PNG dimensions are at bytes 16-23
+        imageWidth = imageBuffer.readUInt32BE(16);
+        imageHeight = imageBuffer.readUInt32BE(20);
+      } else if ((format === 'jpeg' || format === 'jpg') && imageBuffer.length > 20) {
+        // JPEG dimensions require parsing SOF marker
+        let offset = 2; // Skip FF D8
+        while (offset < imageBuffer.length - 8) {
+          if (imageBuffer[offset] === 0xFF && (imageBuffer[offset + 1] >= 0xC0 && imageBuffer[offset + 1] <= 0xC3)) {
+            // Found SOF marker
+            imageHeight = imageBuffer.readUInt16BE(offset + 5);
+            imageWidth = imageBuffer.readUInt16BE(offset + 7);
+            break;
+          }
+          offset += 2 + imageBuffer.readUInt16BE(offset + 2);
+        }
+      }
+      
+      if (imageWidth && imageHeight) {
+        imageAspectRatio = parseFloat((imageWidth / imageHeight).toFixed(2));
+      }
+    } catch (dimError) {
+      // Dimension extraction failed - not critical
+      console.log('Could not extract image dimensions:', dimError.message);
+    }
 
+    // Convert to base64 for API
+    const base64Image = imageBuffer.toString('base64');
+    const base64Length = base64Image.length;
+    const base64SizeKB = Math.round(base64Length / 1024);
+    
     // Use provided mimeType or determine from file extension
     const imageType = mimeType || (typeof imageData === 'string' && imageData.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
-    console.log('Using image type:', imageType);
+    
+    // Add comprehensive image metadata to preparation span
+    prepSpan.setAttribute('image.size_bytes', imageSizeBytes);
+    prepSpan.setAttribute('image.size_mb', imageSizeMB);
+    prepSpan.setAttribute('image.format', format);
+    prepSpan.setAttribute('image.mime_type', imageType);
+    prepSpan.setAttribute('image.base64_length', base64Length);
+    prepSpan.setAttribute('image.base64_size_kb', base64SizeKB);
+    
+    if (imageWidth && imageHeight) {
+      prepSpan.setAttribute('image.width', imageWidth);
+      prepSpan.setAttribute('image.height', imageHeight);
+      prepSpan.setAttribute('image.aspect_ratio', imageAspectRatio);
+      prepSpan.setAttribute('image.resolution', `${imageWidth}x${imageHeight}`);
+      prepSpan.setAttribute('image.pixels', imageWidth * imageHeight);
+    }
+    
+    prepSpan.setAttribute('preparation.success', true);
+    setSpanStatus(prepSpan, true);
+    prepSpan.end();
+    
+    stageTimings.preparation = Date.now() - prepStartTime;
+    agentSpan.addEvent('stage_complete', { stage: 'preparation', duration_ms: stageTimings.preparation });
+    
+    // Add all image metadata to agent span
+    agentSpan.setAttribute('input.image_size_bytes', imageSizeBytes);
+    agentSpan.setAttribute('input.image_size_mb', imageSizeMB);
+    agentSpan.setAttribute('input.format', format);
+    agentSpan.setAttribute('input.mime_type', imageType);
+    if (imageWidth && imageHeight) {
+      agentSpan.setAttribute('input.image_width', imageWidth);
+      agentSpan.setAttribute('input.image_height', imageHeight);
+      agentSpan.setAttribute('input.image_aspect_ratio', imageAspectRatio);
+      agentSpan.setAttribute('input.image_resolution', `${imageWidth}x${imageHeight}`);
+    }
+    agentSpan.setAttribute('input.base64_size_kb', base64SizeKB);
 
-    // Create the prompt for list extraction
-    const prompt = `You are an expert at extracting and structuring information from images.
+    // ============================================
+    // STAGE 2: Prompt Template & Configuration
+    // ============================================
+    const promptStartTime = Date.now();
+    
+    // Define prompt template with version tracking
+    const promptTemplate = `You are an expert at extracting and structuring information from images.
 
 Analyze this image and extract ALL visible list items, tasks, notes, or structured information.
 
@@ -103,6 +199,33 @@ CRITICAL FORMATTING REQUIREMENTS:
 Example correct format:
 {"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": "2 gallons", "notes": "Prefer organic", "explanation": "Essential dairy product"}]}`;
 
+    // Model configuration
+    const modelConfig = {
+      model: 'gpt-4o',
+      temperature: 0.2,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' },
+      image_detail: 'high'
+    };
+
+    // Store prompt template metadata
+    agentSpan.setAttribute('prompt.template_version', 'v1.0');
+    agentSpan.setAttribute('prompt.template_type', 'list_extraction');
+    agentSpan.setAttribute('prompt.template_length', promptTemplate.length);
+    agentSpan.setAttribute('prompt.has_examples', true);
+    agentSpan.setAttribute('prompt.categories', JSON.stringify(['groceries', 'tasks', 'contacts', 'events', 'inventory', 'ideas', 'recipes', 'shopping', 'bills', 'other']));
+    agentSpan.setAttribute('prompt.template_preview', promptTemplate.substring(0, 200) + '...');
+    
+    // Store model configuration
+    agentSpan.setAttribute('model.name', modelConfig.model);
+    agentSpan.setAttribute('model.temperature', modelConfig.temperature);
+    agentSpan.setAttribute('model.max_tokens', modelConfig.max_tokens);
+    agentSpan.setAttribute('model.response_format', JSON.stringify(modelConfig.response_format));
+    agentSpan.setAttribute('model.image_detail', modelConfig.image_detail);
+    
+    stageTimings.prompt_preparation = Date.now() - promptStartTime;
+    agentSpan.addEvent('stage_complete', { stage: 'prompt_preparation', duration_ms: stageTimings.prompt_preparation });
+
     // Call OpenAI Vision API
     console.log('Calling OpenAI Vision API...');
     
@@ -112,26 +235,33 @@ Example correct format:
         content: [
           {
             type: 'text',
-            text: prompt
+            text: promptTemplate
           },
           {
             type: 'image_url',
             image_url: {
               url: `data:${imageType};base64,${base64Image}`,
-              detail: 'high'
+              detail: modelConfig.image_detail
             }
           }
         ]
       }
     ];
 
-    // Create LLM span for OpenAI Vision call
-    const llmSpan = createLLMSpan('openai.vision.completion', 'gpt-4o', prompt, {
-      [SpanAttributes.LLM_TEMPERATURE]: 0.2,
-      [SpanAttributes.LLM_MAX_TOKENS]: 2000,
+    // ============================================
+    // STAGE 3: LLM API Call
+    // ============================================
+    const llmCallStartTime = Date.now();
+    
+    // Create LLM span with detailed naming
+    const llmSpan = createLLMSpan('openai.vision.gpt4o.list_extraction', modelConfig.model, promptTemplate, {
+      [SpanAttributes.LLM_TEMPERATURE]: modelConfig.temperature,
+      [SpanAttributes.LLM_MAX_TOKENS]: modelConfig.max_tokens,
       'llm.provider': 'openai',
-      'llm.task': 'vision_analysis',
-      'llm.response_format': 'json_object'
+      'llm.task': 'vision_list_extraction',
+      'llm.response_format': JSON.stringify(modelConfig.response_format),
+      'llm.image_detail': modelConfig.image_detail,
+      'llm.prompt_template_version': 'v1.0'
     }, agentSpan);
 
     // Add graph attributes for LLM visualization
@@ -139,15 +269,53 @@ Example correct format:
 
     // Add input messages
     addLLMInputMessages(llmSpan, messages);
+    
+    // Track API call attempt (for retry logic if needed)
+    let apiCallAttempts = 1;
+    const maxRetries = 3;
+    let response;
+    let apiCallSuccess = false;
+    let apiCallError = null;
+    
+    agentSpan.addEvent('llm_call_start', {
+      attempt: apiCallAttempts,
+      model: modelConfig.model,
+      timestamp: new Date().toISOString()
+    });
 
     // Use response_format to enforce JSON output (reduces markdown wrapping and latency)
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: messages,
-      max_tokens: 2000,
-      temperature: 0.2,
-      response_format: { type: 'json_object' }, // Forces JSON output, no markdown
+    try {
+      response = await openai.chat.completions.create({
+        model: modelConfig.model,
+        messages: messages,
+        max_tokens: modelConfig.max_tokens,
+        temperature: modelConfig.temperature,
+        response_format: modelConfig.response_format,
+      });
+      apiCallSuccess = true;
+    } catch (apiError) {
+      apiCallError = apiError;
+      llmSpan.recordException(apiError);
+      agentSpan.addEvent('llm_call_error', {
+        attempt: apiCallAttempts,
+        error: apiError.message,
+        error_type: apiError.constructor.name
+      });
+      throw apiError; // Re-throw to be handled by outer try-catch
+    }
+    
+    const llmCallDuration = Date.now() - llmCallStartTime;
+    stageTimings.llm_call = llmCallDuration;
+    agentSpan.addEvent('stage_complete', { 
+      stage: 'llm_api_call', 
+      duration_ms: llmCallDuration,
+      success: apiCallSuccess
     });
+    
+    // Record retry information
+    agentSpan.setAttribute('llm.retry.attempts', apiCallAttempts);
+    agentSpan.setAttribute('llm.retry.max_attempts', maxRetries);
+    agentSpan.setAttribute('llm.retry.success', apiCallSuccess);
 
     // Add LLM response attributes with cost calculation
     const promptTokens = response.usage.prompt_tokens;
@@ -175,16 +343,38 @@ Example correct format:
     llmSpan.setAttribute(SpanAttributes.LLM_COST_COMPLETION, completionCost);
     llmSpan.setAttribute(SpanAttributes.LLM_COST_TOTAL, cost);
     
-    // Additional attributes for debugging
-    llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
-    llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
+    // Additional attributes for debugging and observability
+    const outputContent = response.choices[0].message.content;
+    const outputLength = outputContent.length;
+    const finishReason = response.choices[0].finish_reason;
+    
+    llmSpan.setAttribute('llm.response_length', outputLength);
+    llmSpan.setAttribute('llm.finish_reason', finishReason);
+    llmSpan.setAttribute('llm.api_duration_ms', llmCallDuration);
+    llmSpan.setAttribute('llm.tokens_per_second', Math.round(totalTokens / (llmCallDuration / 1000)));
+    llmSpan.setAttribute('llm.prompt_tokens_per_kb', Math.round((promptTokens / base64SizeKB) * 10) / 10);
+    
+    // Token breakdown by stage (approximate)
+    // Vision API tokens are mostly from image encoding
+    const estimatedImageTokens = Math.round((base64Length / 4) * 0.75); // Base64 -> token estimation
+    const textTokens = promptTokens - estimatedImageTokens;
+    llmSpan.setAttribute('llm.token_breakdown.image_tokens_est', estimatedImageTokens);
+    llmSpan.setAttribute('llm.token_breakdown.text_tokens', textTokens);
+    llmSpan.setAttribute('llm.token_breakdown.completion_tokens', completionTokens);
     
     // CRITICAL: Set output.value for Arize to recognize this as an LLM span
-    const outputContent = response.choices[0].message.content;
     llmSpan.setAttribute(SpanAttributes.OUTPUT_VALUE, outputContent);
 
     // Add output messages (this also helps Arize recognize the span)
     addLLMOutputMessages(llmSpan, [response.choices[0].message]);
+    
+    // Record reasoning/processing events
+    llmSpan.addEvent('response_received', {
+      finish_reason: finishReason,
+      content_length: outputLength,
+      token_count: totalTokens
+    });
+    
     setSpanStatus(llmSpan, true);
     llmSpan.end();
     
@@ -193,86 +383,255 @@ Example correct format:
     console.log('OpenAI Vision API response received');
     console.log('Token usage:', response.usage);
 
-    const content = response.choices[0].message.content;
-    console.log('Raw response:', content);
+    const content = outputContent;
+    console.log('Raw response:', content.substring(0, 200) + '...');
+    
+    // ============================================
+    // STAGE 4: Response Parsing & Validation
+    // ============================================
+    const parseStartTime = Date.now();
+    const parseSpan = tracer.startSpan('listify-agent.vision.response_parsing', {
+      attributes: {
+        [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.TOOL,
+        'tool.name': 'json_parser',
+        'tool.operation': 'extract_and_validate_items'
+      }
+    }, trace.setSpan(context.active(), agentSpan));
 
-    // Parse the JSON response
+    // Parse the JSON response with detailed tracking
     let extractedItems = [];
+    let parsingSuccess = false;
+    let hadMarkdown = false;
+    let parseError = null;
+    
     try {
-      // Remove markdown code blocks if present (fix for AI-identified issue)
+      // Remove markdown code blocks if present
       let cleanedContent = content.trim();
+      const originalLength = cleanedContent.length;
       
       // Remove ```json or ``` code blocks
       if (cleanedContent.startsWith('```')) {
-        // Remove opening ```json or ```
+        hadMarkdown = true;
         cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/i, '');
-        // Remove closing ```
         cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
+        cleanedContent = cleanedContent.trim();
       }
       
-      // Try to parse as JSON array
-      const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        extractedItems = JSON.parse(jsonMatch[0]);
-      } else {
-        // Try parsing the entire cleaned content
-        const parsed = JSON.parse(cleanedContent);
-        // If it's an array, use it; if it's an object with items, extract items
-        if (Array.isArray(parsed)) {
-          extractedItems = parsed;
-        } else if (parsed.items && Array.isArray(parsed.items)) {
-          extractedItems = parsed.items;
+      parseSpan.setAttribute('parsing.markdown_detected', hadMarkdown);
+      parseSpan.setAttribute('parsing.original_length', originalLength);
+      parseSpan.setAttribute('parsing.cleaned_length', cleanedContent.length);
+      parseSpan.setAttribute('parsing.length_reduction', originalLength - cleanedContent.length);
+      
+      // Try to parse as JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(cleanedContent);
+      } catch (directParseError) {
+        // Try parsing as array if object parse fails
+        const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
         } else {
-          extractedItems = JSON.parse(cleanedContent);
+          throw directParseError;
         }
       }
       
-      // Track parsing success in span
-      agentSpan.setAttribute('output.parsing.success', true);
-      agentSpan.setAttribute('output.markdown_removed', content !== cleanedContent);
-    } catch (parseError) {
-      console.error('Failed to parse JSON response:', parseError);
-      console.log('Raw content:', content);
+      // Extract items from parsed JSON
+      if (Array.isArray(parsed)) {
+        extractedItems = parsed;
+      } else if (parsed.items && Array.isArray(parsed.items)) {
+        extractedItems = parsed.items;
+      } else if (parsed.data && Array.isArray(parsed.data)) {
+        extractedItems = parsed.data;
+      } else {
+        throw new Error('Unexpected JSON structure: no items array found');
+      }
       
-      // Track parsing failure in span
-      agentSpan.setAttribute('output.parsing.success', false);
-      agentSpan.setAttribute('output.parsing.error', parseError.message);
+      parsingSuccess = true;
+      parseSpan.setAttribute('parsing.success', true);
+      parseSpan.setAttribute('parsing.items_extracted', extractedItems.length);
+      parseSpan.setAttribute('parsing.json_structure', Array.isArray(parsed) ? 'direct_array' : 'object_with_items');
       
-      // Fallback: try to extract items manually
+    } catch (error) {
+      parseError = error;
+      parsingSuccess = false;
+      console.error('Failed to parse JSON response:', error);
+      console.log('Raw content preview:', content.substring(0, 500));
+      
+      parseSpan.setAttribute('parsing.success', false);
+      parseSpan.setAttribute('parsing.error', error.message);
+      parseSpan.setAttribute('parsing.error_type', error.constructor.name);
+      parseSpan.recordException(error);
+      
       extractedItems = [];
     }
-
-    // Validate and clean the extracted items
-    const validItems = extractedItems.filter(item => {
-      return item && 
-             typeof item.item_name === 'string' && 
-             item.item_name.trim().length > 0;
-    }).map(item => ({
-      item_name: item.item_name.trim(),
-      category: item.category || 'other',
-      quantity: item.quantity || null,
-      notes: item.notes || null,
-      explanation: item.explanation || null,
-      source_type: 'photo',
-      metadata: {
-        analysis_timestamp: new Date().toISOString(),
-        image_type: imageType,
-        confidence: 'high'
-      }
-    }));
-
-    console.log(`Successfully extracted ${validItems.length} items from image`);
     
-    // Add output attributes to agent span
+    const parseDuration = Date.now() - parseStartTime;
+    stageTimings.parsing = parseDuration;
+    parseSpan.setAttribute('parsing.duration_ms', parseDuration);
+    setSpanStatus(parseSpan, parsingSuccess);
+    parseSpan.end();
+    
+    agentSpan.addEvent('stage_complete', { 
+      stage: 'response_parsing', 
+      duration_ms: parseDuration,
+      success: parsingSuccess,
+      items_extracted: extractedItems.length
+    });
+    
+    // Track parsing details in agent span
+    agentSpan.setAttribute('output.parsing.success', parsingSuccess);
+    agentSpan.setAttribute('output.parsing.duration_ms', parseDuration);
+    agentSpan.setAttribute('output.parsing.markdown_removed', hadMarkdown);
+    if (!parsingSuccess && parseError) {
+      agentSpan.setAttribute('output.parsing.error', parseError.message);
+    }
+
+    // ============================================
+    // STAGE 5: Item Validation & Quality Scoring
+    // ============================================
+    const validationStartTime = Date.now();
+    const validationSpan = tracer.startSpan('listify-agent.vision.item_validation', {
+      attributes: {
+        [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.TOOL,
+        'tool.name': 'item_validator',
+        'tool.operation': 'validate_and_score_items'
+      }
+    }, trace.setSpan(context.active(), agentSpan));
+    
+    // Validate and clean the extracted items
+    let validItems = [];
+    let invalidItems = [];
+    let validationMetrics = {
+      total_items: extractedItems.length,
+      valid_items: 0,
+      invalid_items: 0,
+      items_with_name: 0,
+      items_with_category: 0,
+      items_with_quantity: 0,
+      items_with_notes: 0,
+      items_with_explanation: 0,
+      categories_found: new Set(),
+      avg_name_length: 0,
+      avg_explanation_length: 0
+    };
+    
+    extractedItems.forEach((item, index) => {
+      if (item && typeof item.item_name === 'string' && item.item_name.trim().length > 0) {
+        const cleanedItem = {
+          item_name: item.item_name.trim(),
+          category: item.category || 'other',
+          quantity: item.quantity || null,
+          notes: item.notes || null,
+          explanation: item.explanation || null,
+          source_type: 'photo',
+          metadata: {
+            analysis_timestamp: new Date().toISOString(),
+            image_type: imageType,
+            confidence: 'high'
+          }
+        };
+        
+        validItems.push(cleanedItem);
+        validationMetrics.valid_items++;
+        validationMetrics.items_with_name++;
+        if (cleanedItem.category && cleanedItem.category !== 'other') {
+          validationMetrics.items_with_category++;
+        }
+        if (cleanedItem.quantity) validationMetrics.items_with_quantity++;
+        if (cleanedItem.notes) validationMetrics.items_with_notes++;
+        if (cleanedItem.explanation) validationMetrics.items_with_explanation++;
+        
+        validationMetrics.categories_found.add(cleanedItem.category);
+        validationMetrics.avg_name_length += cleanedItem.item_name.length;
+        if (cleanedItem.explanation) {
+          validationMetrics.avg_explanation_length += cleanedItem.explanation.length;
+        }
+      } else {
+        invalidItems.push({ index, item, reason: !item ? 'null_item' : (!item.item_name ? 'missing_name' : 'empty_name') });
+        validationMetrics.invalid_items++;
+      }
+    });
+    
+    // Calculate averages
+    if (validItems.length > 0) {
+      validationMetrics.avg_name_length = Math.round(validationMetrics.avg_name_length / validItems.length);
+      validationMetrics.avg_explanation_length = Math.round(validationMetrics.avg_explanation_length / validationMetrics.items_with_explanation || 1);
+    }
+    
+    // Calculate confidence score (based on completeness)
+    const completenessScore = (
+      (validationMetrics.items_with_name / validationMetrics.total_items || 0) * 0.3 +
+      (validationMetrics.items_with_category / validationMetrics.total_items || 0) * 0.2 +
+      (validationMetrics.items_with_explanation / validationMetrics.total_items || 0) * 0.3 +
+      (validationMetrics.items_with_quantity / validationMetrics.total_items || 0) * 0.1 +
+      (validationMetrics.items_with_notes / validationMetrics.total_items || 0) * 0.1
+    );
+    
+    // Add validation metrics to span
+    validationSpan.setAttribute('validation.total_items', validationMetrics.total_items);
+    validationSpan.setAttribute('validation.valid_items', validationMetrics.valid_items);
+    validationSpan.setAttribute('validation.invalid_items', validationMetrics.invalid_items);
+    validationSpan.setAttribute('validation.completeness_score', Math.round(completenessScore * 100) / 100);
+    validationSpan.setAttribute('validation.items_with_category', validationMetrics.items_with_category);
+    validationSpan.setAttribute('validation.items_with_explanation', validationMetrics.items_with_explanation);
+    validationSpan.setAttribute('validation.categories_count', validationMetrics.categories_found.size);
+    validationSpan.setAttribute('validation.categories', JSON.stringify([...validationMetrics.categories_found]));
+    validationSpan.setAttribute('validation.avg_name_length', validationMetrics.avg_name_length);
+    validationSpan.setAttribute('validation.avg_explanation_length', validationMetrics.avg_explanation_length);
+    
+    if (invalidItems.length > 0) {
+      validationSpan.setAttribute('validation.invalid_items_reasons', JSON.stringify(invalidItems.map(i => i.reason)));
+    }
+    
+    const validationDuration = Date.now() - validationStartTime;
+    stageTimings.validation = validationDuration;
+    validationSpan.setAttribute('validation.duration_ms', validationDuration);
+    setSpanStatus(validationSpan, true);
+    validationSpan.end();
+    
+    agentSpan.addEvent('stage_complete', { 
+      stage: 'item_validation', 
+      duration_ms: validationDuration,
+      valid_items: validItems.length,
+      invalid_items: invalidItems.length
+    });
+
+    console.log(`Successfully extracted ${validItems.length} items from image (${invalidItems.length} invalid)`);
+    
+    // Add comprehensive output attributes to agent span
     agentSpan.setAttribute('output.item_count', validItems.length);
-    agentSpan.setAttribute('output.success', true);
-    agentSpan.setAttribute('output.categories', JSON.stringify([...new Set(validItems.map(item => item.category))]));
-    agentSpan.setAttribute('output.total_items', validItems.length);
-    agentSpan.setAttribute('output.summary', `Successfully extracted ${validItems.length} items from image`);
+    agentSpan.setAttribute('output.items_total', validationMetrics.total_items);
+    agentSpan.setAttribute('output.items_valid', validationMetrics.valid_items);
+    agentSpan.setAttribute('output.items_invalid', validationMetrics.invalid_items);
+    agentSpan.setAttribute('output.success', validItems.length > 0);
+    agentSpan.setAttribute('output.categories', JSON.stringify([...validationMetrics.categories_found]));
+    agentSpan.setAttribute('output.categories_count', validationMetrics.categories_found.size);
+    agentSpan.setAttribute('output.completeness_score', Math.round(completenessScore * 100) / 100);
+    agentSpan.setAttribute('output.confidence', completenessScore >= 0.8 ? 'high' : (completenessScore >= 0.5 ? 'medium' : 'low'));
+    agentSpan.setAttribute('output.avg_name_length', validationMetrics.avg_name_length);
+    agentSpan.setAttribute('output.avg_explanation_length', validationMetrics.avg_explanation_length);
+    agentSpan.setAttribute('output.summary', `Successfully extracted ${validItems.length} items from image (${completenessScore >= 0.8 ? 'high' : 'medium'} confidence)`);
     
     if (validItems.length > 0) {
       agentSpan.setAttribute('output.sample_items', JSON.stringify(validItems.slice(0, 3).map(item => item.item_name)));
     }
+    
+    // Add timing breakdown
+    const overallDuration = Date.now() - overallStartTime;
+    stageTimings.total = overallDuration;
+    agentSpan.setAttribute('timing.total_ms', overallDuration);
+    agentSpan.setAttribute('timing.preparation_ms', stageTimings.preparation);
+    agentSpan.setAttribute('timing.prompt_preparation_ms', stageTimings.prompt_preparation);
+    agentSpan.setAttribute('timing.llm_call_ms', stageTimings.llm_call);
+    agentSpan.setAttribute('timing.parsing_ms', stageTimings.parsing);
+    agentSpan.setAttribute('timing.validation_ms', stageTimings.validation);
+    agentSpan.setAttribute('timing.breakdown', JSON.stringify(stageTimings));
+    
+    // Add efficiency metrics
+    agentSpan.setAttribute('efficiency.items_per_second', Math.round((validItems.length / (overallDuration / 1000)) * 100) / 100);
+    agentSpan.setAttribute('efficiency.tokens_per_item', validItems.length > 0 ? Math.round(totalTokens / validItems.length) : 0);
+    agentSpan.setAttribute('efficiency.cost_per_item', validItems.length > 0 ? Math.round((cost / validItems.length) * 10000) / 10000 : 0);
 
     // Add metadata
     addSpanMetadata(agentSpan, {
@@ -289,12 +648,28 @@ Example correct format:
   } catch (error) {
     console.error('Error in analyzeImage:', error);
     
-    // Record error in span
+    // Calculate partial timing if error occurred mid-process
+    const errorTime = Date.now() - overallStartTime;
+    if (Object.keys(stageTimings).length > 0) {
+      agentSpan.setAttribute('timing.failed_at_ms', errorTime);
+      agentSpan.setAttribute('timing.breakdown_partial', JSON.stringify(stageTimings));
+    }
+    
+    // Record error in span with detailed context
     recordSpanException(agentSpan, error, {
       'output.success': false,
       'output.item_count': 0,
-      'error.context': 'image_analysis'
+      'error.context': 'image_analysis',
+      'error.stage': stageTimings.llm_call ? 'post_llm' : (stageTimings.preparation ? 'post_preparation' : 'preparation'),
+      'error.timestamp': new Date().toISOString()
     });
+    
+    agentSpan.addEvent('analysis_failed', {
+      error: error.message,
+      error_type: error.constructor.name,
+      stage_failed_at: Date.now() - overallStartTime
+    });
+    
     agentSpan.end();
     
     throw error;

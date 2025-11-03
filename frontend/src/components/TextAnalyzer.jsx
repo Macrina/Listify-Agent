@@ -50,10 +50,20 @@ function TextAnalyzer({ onSuccess }) {
       setLoadingStep('Extracting list items...');
       const response = await analyzeText(text);
       
+      // analyzeText returns response.data, which is: { success, data: { items, itemCount }, message }
+      // Check if response is successful but has no items
+      if (response.success && response.data && response.data.itemCount === 0) {
+        setResult(response.data);
+        setShowSaveOptions(false); // Don't show save options for empty results
+        setError(null); // Clear any previous errors
+        return; // Exit early - no items to save
+      }
+      
       // Step 4: Saving to database
       setLoadingStep('Saving to database...');
       await new Promise(resolve => setTimeout(resolve, 300));
       
+      // response.data contains { items, itemCount, listId, etc. }
       setResult(response.data);
       setShowSaveOptions(true);
       setNewListName('Text Analysis List');
@@ -194,25 +204,38 @@ function TextAnalyzer({ onSuccess }) {
       {result && (
         <div className="result-section">
           <h3>Extraction Results</h3>
-          <div className="result-summary">
-            <p>Successfully extracted <strong>{result.itemCount}</strong> items!</p>
-          </div>
-
-          <div className="extracted-items">
-            {result.items.map((item, index) => (
-              <div key={index} className="extracted-item">
-                <div className="item-header">
-                  <h4>{item.item_name}</h4>
-                </div>
-                <div className="item-details">
-                  <span className="category">{item.category}</span>
-                  {item.quantity && <span className="quantity">{item.quantity}</span>}
-                </div>
-                {item.notes && <p className="item-notes">Note: {item.notes.endsWith('.') ? item.notes : item.notes + '.'}</p>}
-                {item.explanation && <p className="item-explanation">{item.explanation}</p>}
+          {result.itemCount === 0 ? (
+            <div className="result-summary">
+              <p style={{ color: '#666', fontStyle: 'italic' }}>
+                {result.message || 'No list items were found in the text. Try providing more structured text or a clearer list format.'}
+              </p>
+              <p style={{ marginTop: '10px', fontSize: '0.9em', color: '#888' }}>
+                💡 Tip: Try using bullet points, numbered lists, or clear item descriptions.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="result-summary">
+                <p>Successfully extracted <strong>{result.itemCount}</strong> items!</p>
               </div>
-            ))}
-          </div>
+
+              <div className="extracted-items">
+                {result.items && result.items.map((item, index) => (
+                  <div key={index} className="extracted-item">
+                    <div className="item-header">
+                      <h4>{item.item_name}</h4>
+                    </div>
+                    <div className="item-details">
+                      <span className="category">{item.category}</span>
+                      {item.quantity && <span className="quantity">{item.quantity}</span>}
+                    </div>
+                    {item.notes && <p className="item-notes">Note: {item.notes.endsWith('.') ? item.notes : item.notes + '.'}</p>}
+                    {item.explanation && <p className="item-explanation">{item.explanation}</p>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

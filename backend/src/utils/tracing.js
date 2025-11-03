@@ -29,6 +29,7 @@ export const SpanAttributes = {
   // LLM attributes
   LLM_MODEL_NAME: 'llm.model_name',
   LLM_MODEL_VERSION: 'llm.model_version',
+  LLM_PROVIDER: 'llm.provider',
   LLM_TOKEN_COUNT_PROMPT: 'llm.token_count.prompt',
   LLM_TOKEN_COUNT_COMPLETION: 'llm.token_count.completion',
   LLM_TOKEN_COUNT_TOTAL: 'llm.token_count.total',
@@ -39,6 +40,9 @@ export const SpanAttributes = {
   LLM_TOP_P: 'llm.top_p',
   LLM_FREQUENCY_PENALTY: 'llm.frequency_penalty',
   LLM_PRESENCE_PENALTY: 'llm.presence_penalty',
+  LLM_COST_PROMPT: 'llm.cost.prompt',
+  LLM_COST_COMPLETION: 'llm.cost.completion',
+  LLM_COST_TOTAL: 'llm.cost.total',
   
   // Tool attributes
   TOOL_CALL_FUNCTION_NAME: 'tool.call.function.name',

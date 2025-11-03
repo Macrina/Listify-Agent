@@ -13,4 +13,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'dummy-key-for-build',
 });
 
+// Note: OpenAI auto-instrumentation is configured at SDK level in arize.js
+// Manual spans are created in imageAnalysisService.js with proper attributes
+
 export default openai;

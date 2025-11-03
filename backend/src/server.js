@@ -12,6 +12,7 @@ import { getPortWithFallback } from './utils/portUtils.js';
 import { healthCheck, basicHealthCheck, detailedHealthCheck, readinessCheck, livenessCheck } from './middleware/healthMonitor.js';
 import { initializeArizeTracing } from './config/arize.js';
 import { tracingMiddleware, tracingErrorHandler } from './middleware/tracingMiddleware.js';
+import { evaluationMiddleware } from './evaluations/evaluationMiddleware.js';
 
 // Load environment variables
 dotenv.config();
@@ -43,6 +44,9 @@ app.use(cors(getCorsConfig()));
 
 // Tracing middleware - must be before routes to capture all API calls
 app.use('/api', tracingMiddleware);
+
+// Evaluation middleware - optionally evaluates API responses (set ENABLE_EVALUATIONS=true)
+app.use('/api', evaluationMiddleware);
 
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' }));

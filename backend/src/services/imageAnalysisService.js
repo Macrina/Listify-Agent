@@ -160,25 +160,35 @@ Example correct format:
     const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
     
     // Set all required OpenInference LLM attributes for Arize recognition
-    llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o'); // Explicitly set for Arize
+    // CRITICAL: These exact attribute names are required for Arize cost tracking
+    llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o');
+    llmSpan.setAttribute(SpanAttributes.LLM_PROVIDER, 'openai');
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
-    llmSpan.setAttribute('llm.cost_usd', cost);
-    llmSpan.setAttribute('llm.cost.input_usd', (promptTokens / 1_000_000) * inputCostPer1M);
-    llmSpan.setAttribute('llm.cost.output_usd', (completionTokens / 1_000_000) * outputCostPer1M);
+    
+    // Set cost attributes using OpenInference semantic conventions
+    // Note: Arize auto-calculates costs, but we set these for manual tracking
+    const promptCost = (promptTokens / 1_000_000) * inputCostPer1M;
+    const completionCost = (completionTokens / 1_000_000) * outputCostPer1M;
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_PROMPT, promptCost);
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_COMPLETION, completionCost);
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_TOTAL, cost);
+    
+    // Additional attributes for debugging
     llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
     llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
-    llmSpan.setAttribute('llm.provider', 'openai');
     
-    // Also add to agent span for aggregation
-    agentSpan.setAttribute('llm.token_count.total', totalTokens);
-    agentSpan.setAttribute('llm.cost_usd', cost);
+    // CRITICAL: Set output.value for Arize to recognize this as an LLM span
+    const outputContent = response.choices[0].message.content;
+    llmSpan.setAttribute(SpanAttributes.OUTPUT_VALUE, outputContent);
 
-    // Add output messages
+    // Add output messages (this also helps Arize recognize the span)
     addLLMOutputMessages(llmSpan, [response.choices[0].message]);
     setSpanStatus(llmSpan, true);
     llmSpan.end();
+    
+    console.log(`📊 LLM Span: tokens=${totalTokens}, cost=$${cost.toFixed(6)}, prompt=${promptTokens}, completion=${completionTokens}`);
 
     console.log('OpenAI Vision API response received');
     console.log('Token usage:', response.usage);
@@ -389,25 +399,35 @@ ${text}`;
     const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
     
     // Set all required OpenInference LLM attributes for Arize recognition
-    llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o'); // Explicitly set for Arize
+    // CRITICAL: These exact attribute names are required for Arize cost tracking
+    llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o');
+    llmSpan.setAttribute(SpanAttributes.LLM_PROVIDER, 'openai');
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
     llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
-    llmSpan.setAttribute('llm.cost_usd', cost);
-    llmSpan.setAttribute('llm.cost.input_usd', (promptTokens / 1_000_000) * inputCostPer1M);
-    llmSpan.setAttribute('llm.cost.output_usd', (completionTokens / 1_000_000) * outputCostPer1M);
+    
+    // Set cost attributes using OpenInference semantic conventions
+    // Note: Arize auto-calculates costs, but we set these for manual tracking
+    const promptCost = (promptTokens / 1_000_000) * inputCostPer1M;
+    const completionCost = (completionTokens / 1_000_000) * outputCostPer1M;
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_PROMPT, promptCost);
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_COMPLETION, completionCost);
+    llmSpan.setAttribute(SpanAttributes.LLM_COST_TOTAL, cost);
+    
+    // Additional attributes for debugging
     llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
     llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
-    llmSpan.setAttribute('llm.provider', 'openai');
     
-    // Also add to agent span for aggregation
-    agentSpan.setAttribute('llm.token_count.total', totalTokens);
-    agentSpan.setAttribute('llm.cost_usd', cost);
+    // CRITICAL: Set output.value for Arize to recognize this as an LLM span
+    const outputContent = response.choices[0].message.content;
+    llmSpan.setAttribute(SpanAttributes.OUTPUT_VALUE, outputContent);
 
-    // Add output messages
+    // Add output messages (this also helps Arize recognize the span)
     addLLMOutputMessages(llmSpan, [response.choices[0].message]);
     setSpanStatus(llmSpan, true);
     llmSpan.end();
+    
+    console.log(`📊 LLM Span (text): tokens=${totalTokens}, cost=$${cost.toFixed(6)}, prompt=${promptTokens}, completion=${completionTokens}`);
 
     const content = response.choices[0].message.content;
     console.log('Text analysis response:', content);
@@ -693,23 +713,33 @@ ${textContent.substring(0, 4000)}`;
       const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
       
       // Set all required OpenInference LLM attributes for Arize recognition
-      llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o'); // Explicitly set for Arize
+      llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o');
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
+      
+      // Set cost attributes - use both formats for maximum compatibility
+      llmSpan.setAttribute('llm.usage.total_cost', cost);
       llmSpan.setAttribute('llm.cost_usd', cost);
+      llmSpan.setAttribute('llm.usage.input_cost', (promptTokens / 1_000_000) * inputCostPer1M);
+      llmSpan.setAttribute('llm.usage.output_cost', (completionTokens / 1_000_000) * outputCostPer1M);
       llmSpan.setAttribute('llm.cost.input_usd', (promptTokens / 1_000_000) * inputCostPer1M);
       llmSpan.setAttribute('llm.cost.output_usd', (completionTokens / 1_000_000) * outputCostPer1M);
+      
       llmSpan.setAttribute('llm.response_length', response_openai.choices[0].message.content.length);
       llmSpan.setAttribute('llm.finish_reason', response_openai.choices[0].finish_reason);
       llmSpan.setAttribute('llm.provider', 'openai');
       
-      // Also add to agent span for aggregation
-      agentSpan.setAttribute('llm.token_count.total', totalTokens);
-      agentSpan.setAttribute('llm.cost_usd', cost);
+      // CRITICAL: Set output.value for Arize to recognize this as an LLM span
+      const outputContent = response_openai.choices[0].message.content;
+      llmSpan.setAttribute(SpanAttributes.OUTPUT_VALUE, outputContent);
 
-    // Add output messages
+    // Add output messages (this also helps Arize recognize the span)
     addLLMOutputMessages(llmSpan, [response_openai.choices[0].message]);
+    setSpanStatus(llmSpan, true);
+    llmSpan.end();
+    
+    console.log(`📊 LLM Span (link-fetch): tokens=${totalTokens}, cost=$${cost.toFixed(6)}, prompt=${promptTokens}, completion=${completionTokens}`);
     setSpanStatus(llmSpan, true);
     llmSpan.end();
 
@@ -930,25 +960,33 @@ ${textContent.substring(0, 8000)}`;
       const cost = (promptTokens / 1_000_000) * inputCostPer1M + (completionTokens / 1_000_000) * outputCostPer1M;
       
       // Set all required OpenInference LLM attributes for Arize recognition
-      llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o'); // Explicitly set for Arize
+      llmSpan.setAttribute(SpanAttributes.LLM_MODEL_NAME, 'gpt-4o');
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, promptTokens);
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, completionTokens);
       llmSpan.setAttribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, totalTokens);
+      
+      // Set cost attributes - use both formats for maximum compatibility
+      llmSpan.setAttribute('llm.usage.total_cost', cost);
       llmSpan.setAttribute('llm.cost_usd', cost);
+      llmSpan.setAttribute('llm.usage.input_cost', (promptTokens / 1_000_000) * inputCostPer1M);
+      llmSpan.setAttribute('llm.usage.output_cost', (completionTokens / 1_000_000) * outputCostPer1M);
       llmSpan.setAttribute('llm.cost.input_usd', (promptTokens / 1_000_000) * inputCostPer1M);
       llmSpan.setAttribute('llm.cost.output_usd', (completionTokens / 1_000_000) * outputCostPer1M);
+      
       llmSpan.setAttribute('llm.response_length', response.choices[0].message.content.length);
       llmSpan.setAttribute('llm.finish_reason', response.choices[0].finish_reason);
       llmSpan.setAttribute('llm.provider', 'openai');
       
-      // Also add to agent span for aggregation
-      agentSpan.setAttribute('llm.token_count.total', totalTokens);
-      agentSpan.setAttribute('llm.cost_usd', cost);
+      // CRITICAL: Set output.value for Arize to recognize this as an LLM span
+      const outputContent = response.choices[0].message.content;
+      llmSpan.setAttribute(SpanAttributes.OUTPUT_VALUE, outputContent);
 
-      // Add output messages
+      // Add output messages (this also helps Arize recognize the span)
       addLLMOutputMessages(llmSpan, [response.choices[0].message]);
       setSpanStatus(llmSpan, true);
       llmSpan.end();
+      
+      console.log(`📊 LLM Span (link-puppeteer): tokens=${totalTokens}, cost=$${cost.toFixed(6)}, prompt=${promptTokens}, completion=${completionTokens}`);
 
       const content_response = response.choices[0].message.content;
       console.log('Link analysis response:', content_response);

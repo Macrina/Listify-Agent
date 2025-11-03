@@ -13,6 +13,10 @@ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { diag, DiagConsoleLogger, DiagLogLevel, trace } from "@opentelemetry/api";
 import { Metadata } from "@grpc/grpc-js";
+// OpenAI auto-instrumentation disabled due to ESM module resolution bug
+// The instrumentation package cannot import APIPromise from openai even though it exists
+// We use manual LLM spans instead which have all required attributes
+// import { OpenAIInstrumentation } from "@arizeai/openinference-instrumentation-openai";
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -91,7 +95,6 @@ const register = ({ space_id, api_key, project_name }) => {
     }),
     instrumentations: [
       // Auto-instrumentations for HTTP, Express, Fetch, etc.
-      // This will automatically trace all HTTP requests including OpenAI API calls
       getNodeAutoInstrumentations({
         // Enable HTTP/HTTPS instrumentation for Express routes
         '@opentelemetry/instrumentation-http': {
@@ -106,8 +109,9 @@ const register = ({ space_id, api_key, project_name }) => {
           enabled: true,
         },
       }),
-      // Note: OpenAI instrumentation removed due to version incompatibility
-      // Auto-instrumentations will trace OpenAI HTTP requests automatically
+      // OpenAI auto-instrumentation disabled - ESM module resolution issue with APIPromise
+      // Manual LLM spans in imageAnalysisService.js have all required OpenInference attributes
+      // new OpenAIInstrumentation(), // Disabled: cannot import APIPromise in ESM context
     ],
     spanProcessor: spanProcessor,
   });
@@ -115,7 +119,8 @@ const register = ({ space_id, api_key, project_name }) => {
   // Start the SDK
   sdk.start();
   console.log("📡 OpenTelemetry initialized - sending traces to Arize");
-  console.log("✅ Auto-instrumentations enabled: HTTP, Express, Fetch, OpenAI");
+  console.log("✅ Auto-instrumentations enabled: HTTP, Express, Fetch");
+  console.log("✅ Manual LLM spans created in imageAnalysisService.js with token counts and costs");
   
   return sdk;
 };

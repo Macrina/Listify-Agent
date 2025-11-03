@@ -18,6 +18,7 @@ An intelligent AI-powered list extraction and management system that uses OpenAI
 - **🌐 RESTful API**: Complete API for all operations
 - **⚡ Real-time Processing**: Fast AI-powered analysis
 - **📱 Modern UI**: React-based responsive frontend
+- **✅ LLM Evaluations**: Three core evaluation metrics for quality assurance
 
 ## 🏗️ Architecture
 
@@ -271,8 +272,9 @@ Listify-Agent/
 
 - **[API Documentation](docs/API.md)** - Complete API reference
 - **[Deployment Guide](DEPLOYMENT.md)** - Deployment instructions
-- **[Arize Debug Guide](ARIZE_DEBUG_GUIDE.md)** - Troubleshooting tracing
 - **[AgentDB Integration](AGENTDB_MCP_INTEGRATION.md)** - Database setup
+- **[LLM Evaluations](backend/evaluations/README.md)** - Evaluation metrics guide
+- **[Arize Evaluations](backend/ARIZE_EVALUATIONS_GUIDE.md)** - Viewing evaluations in Arize
 
 ## 🤝 Contributing
 

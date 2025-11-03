@@ -5,30 +5,44 @@
 
 import { trace } from '@opentelemetry/api';
 import { flushTraces } from '../config/arize.js';
+import { SpanAttributes, SpanKinds } from '../utils/tracing.js';
 
 /**
  * Middleware to create spans for all API requests
  */
 export const tracingMiddleware = (req, res, next) => {
   const tracer = trace.getTracer('listify-agent-api', '1.0.0');
-  const spanName = `${req.method} ${req.path}`;
+  // Use a more descriptive span name that will show up clearly in Arize
+  const spanName = `API: ${req.method} ${req.path}`;
   
-  // Create span for this request
+  // Create span for this request with OpenInference attributes
   const span = tracer.startSpan(spanName, {
     attributes: {
+      // OpenInference span kind
+      [SpanAttributes.OPENINFERENCE_SPAN_KIND]: SpanKinds.AGENT,
+      // HTTP attributes
       'http.method': req.method,
       'http.url': req.url,
       'http.route': req.path,
       'http.target': req.path,
+      'http.scheme': req.protocol || 'http',
+      'http.host': req.get('host') || 'localhost',
+      // Service attributes
       'service.name': 'listify-agent',
       'service.version': '1.0.0',
+      // Custom attributes
+      'api.endpoint': req.path,
+      'api.operation': req.method,
     },
   });
 
-  // Add request context
+  // Add request context with OpenInference input attributes
   if (req.body && Object.keys(req.body).length > 0) {
     try {
-      const bodyPreview = JSON.stringify(req.body).substring(0, 500);
+      const bodyStr = JSON.stringify(req.body);
+      const bodyPreview = bodyStr.substring(0, 500);
+      // Use OpenInference input attribute
+      span.setAttribute(SpanAttributes.INPUT_VALUE, bodyStr);
       span.setAttribute('http.request.body.preview', bodyPreview);
     } catch (e) {
       // Ignore serialization errors
@@ -45,19 +59,23 @@ export const tracingMiddleware = (req, res, next) => {
     span.setAttribute('http.status_code', res.statusCode);
     span.setAttribute('http.status_text', res.statusMessage || 'OK');
     
+    // Add output value for OpenInference
+    if (data && typeof data === 'string') {
+      try {
+        // Try to parse as JSON to add structured output
+        const parsed = JSON.parse(data);
+        span.setAttribute(SpanAttributes.OUTPUT_VALUE, JSON.stringify(parsed));
+      } catch (e) {
+        // If not JSON, use as-is (truncated)
+        const preview = data.substring(0, 1000);
+        span.setAttribute(SpanAttributes.OUTPUT_VALUE, preview);
+      }
+    }
+    
     if (res.statusCode >= 400) {
       span.setStatus({ code: 2, message: `HTTP ${res.statusCode}` }); // ERROR status
     } else {
       span.setStatus({ code: 1 }); // OK status
-    }
-
-    // Add response preview if possible
-    if (data && typeof data === 'string' && data.length < 500) {
-      try {
-        span.setAttribute('http.response.body.preview', data);
-      } catch (e) {
-        // Ignore serialization errors
-      }
     }
 
     // End span

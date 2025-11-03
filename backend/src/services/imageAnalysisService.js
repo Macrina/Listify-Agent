@@ -144,11 +144,13 @@ If no list items are found, return an empty array: []`;
     // Add input messages
     addLLMInputMessages(llmSpan, messages);
 
+    // Use response_format to enforce JSON output (reduces markdown wrapping and latency)
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: messages,
       max_tokens: 2000,
       temperature: 0.2,
+      response_format: { type: 'json_object' }, // Forces JSON output, no markdown
     });
 
     // Add LLM response attributes
@@ -322,12 +324,19 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
+CRITICAL FORMATTING REQUIREMENTS:
+1. You MUST return a valid JSON object with an "items" array property
+2. Do NOT wrap your response in markdown code blocks
+3. Do NOT use \`\`\`json or \`\`\` tags
+4. Do NOT include any text before or after the JSON
+5. Return ONLY valid JSON starting with { and ending with }
+6. If no items found, return: {"items": []}
+
+Example correct format:
+{"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": null, "notes": null, "explanation": "Essential dairy product"}]}
 
 Text to analyze:
-${text}
-
-If no list items are found, return an empty array: []`;
+${text}`;
 
     // Create LLM span for OpenAI text completion
     const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
@@ -345,11 +354,13 @@ If no list items are found, return an empty array: []`;
     const messages = [{ role: 'user', content: prompt }];
     addLLMInputMessages(llmSpan, messages);
 
+    // Use response_format to enforce JSON output (reduces markdown wrapping and latency)
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: messages,
       max_tokens: 2000,
       temperature: 0.2,
+      response_format: { type: 'json_object' }, // Forces JSON output, no markdown
     });
 
     // Add LLM response attributes with cost calculation
@@ -381,10 +392,11 @@ If no list items are found, return an empty array: []`;
     const content = response.choices[0].message.content;
     console.log('Text analysis response:', content);
 
-    // Parse the JSON response (same logic as other analysis functions)
+    // Parse the JSON response - response_format should ensure raw JSON
     let extractedItems = [];
+    const parseStartTime = Date.now();
     try {
-      // Remove markdown code blocks if present
+      // Remove markdown code blocks if present (defensive - should not be needed with response_format)
       let cleanedContent = content.trim();
       const hadMarkdown = cleanedContent.startsWith('```');
       
@@ -394,40 +406,44 @@ If no list items are found, return an empty array: []`;
         // Remove closing ```
         cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
         cleanedContent = cleanedContent.trim();
-        console.log('Removed markdown wrapper, cleaned content:', cleanedContent.substring(0, 100));
+        console.log('⚠️ Markdown wrapper detected (should not happen with response_format), cleaned content:', cleanedContent.substring(0, 100));
       }
       
-      // Try to parse as JSON array
-      const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        extractedItems = JSON.parse(jsonMatch[0]);
-        console.log('Parsed JSON array, found', extractedItems.length, 'items');
+      // Parse JSON - expect object with "items" array or direct array
+      const parsed = JSON.parse(cleanedContent);
+      
+      if (Array.isArray(parsed)) {
+        // Direct array response (legacy format)
+        extractedItems = parsed;
+        console.log('Parsed as direct array, found', extractedItems.length, 'items');
+      } else if (parsed.items && Array.isArray(parsed.items)) {
+        // Object with items array (expected format with response_format)
+        extractedItems = parsed.items;
+        console.log('Extracted items from object, found', extractedItems.length, 'items');
+      } else if (parsed.data && Array.isArray(parsed.data)) {
+        // Alternative format
+        extractedItems = parsed.data;
+        console.log('Extracted items from data property, found', extractedItems.length, 'items');
       } else {
-        // Try parsing the entire cleaned content
-        const parsed = JSON.parse(cleanedContent);
-        if (Array.isArray(parsed)) {
-          extractedItems = parsed;
-          console.log('Parsed as array, found', extractedItems.length, 'items');
-        } else if (parsed.items && Array.isArray(parsed.items)) {
-          extractedItems = parsed.items;
-          console.log('Extracted items from object, found', extractedItems.length, 'items');
-        } else {
-          // Single item or unexpected format
-          console.warn('Unexpected JSON format:', typeof parsed);
-          extractedItems = [];
-        }
+        console.warn('Unexpected JSON format:', Object.keys(parsed));
+        extractedItems = [];
       }
       
+      const parseDuration = Date.now() - parseStartTime;
       agentSpan.setAttribute('output.parsing.success', true);
+      agentSpan.setAttribute('output.parsing.duration_ms', parseDuration);
       agentSpan.setAttribute('output.markdown_removed', hadMarkdown);
       agentSpan.setAttribute('output.raw_response_length', content.length);
       agentSpan.setAttribute('output.cleaned_response_length', cleanedContent.length);
+      agentSpan.setAttribute('output.response_format_enforced', true);
     } catch (parseError) {
+      const parseDuration = Date.now() - parseStartTime;
       console.error('Failed to parse JSON response:', parseError);
-      console.error('Raw content:', content);
+      console.error('Raw content (first 500 chars):', content.substring(0, 500));
       agentSpan.setAttribute('output.parsing.success', false);
+      agentSpan.setAttribute('output.parsing.duration_ms', parseDuration);
       agentSpan.setAttribute('output.parsing.error', parseError.message);
-      agentSpan.setAttribute('output.raw_content_preview', content.substring(0, 200));
+      agentSpan.setAttribute('output.raw_content_preview', content.substring(0, 500));
       extractedItems = [];
     }
 
@@ -805,12 +821,14 @@ If no list items are found, return an empty array: []`;
       const messages = [{ role: 'user', content: prompt }];
       addLLMInputMessages(llmSpan, messages);
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      // Use response_format to enforce JSON output (reduces markdown wrapping and latency)
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
         messages: messages,
-      max_tokens: 2000,
-      temperature: 0.2,
-    });
+        max_tokens: 2000,
+        temperature: 0.2,
+        response_format: { type: 'json_object' }, // Forces JSON output, no markdown
+      });
 
       // Add LLM response attributes
       // Add LLM response attributes with cost calculation

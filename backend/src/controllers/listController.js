@@ -121,6 +121,18 @@ export async function analyzeTextInput(req, res) {
     // Flush traces to ensure they're exported
     await flushTraces();
 
+    // Check if any items were extracted before saving
+    if (!extractedItems || extractedItems.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          items: [],
+          itemCount: 0
+        },
+        message: 'No list items found in the text. Try providing more structured text or a clearer list format.',
+      });
+    }
+
     // Save to database
     const savedList = await saveListItems(extractedItems, 'text', {
       textLength: text.length,

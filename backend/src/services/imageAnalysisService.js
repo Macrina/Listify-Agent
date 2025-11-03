@@ -386,31 +386,48 @@ If no list items are found, return an empty array: []`;
     try {
       // Remove markdown code blocks if present
       let cleanedContent = content.trim();
-      if (cleanedContent.startsWith('```')) {
+      const hadMarkdown = cleanedContent.startsWith('```');
+      
+      if (hadMarkdown) {
+        // Remove opening ```json or ```
         cleanedContent = cleanedContent.replace(/^```(?:json)?\s*\n?/i, '');
+        // Remove closing ```
         cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
+        cleanedContent = cleanedContent.trim();
+        console.log('Removed markdown wrapper, cleaned content:', cleanedContent.substring(0, 100));
       }
       
+      // Try to parse as JSON array
       const jsonMatch = cleanedContent.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         extractedItems = JSON.parse(jsonMatch[0]);
+        console.log('Parsed JSON array, found', extractedItems.length, 'items');
       } else {
+        // Try parsing the entire cleaned content
         const parsed = JSON.parse(cleanedContent);
         if (Array.isArray(parsed)) {
           extractedItems = parsed;
+          console.log('Parsed as array, found', extractedItems.length, 'items');
         } else if (parsed.items && Array.isArray(parsed.items)) {
           extractedItems = parsed.items;
+          console.log('Extracted items from object, found', extractedItems.length, 'items');
         } else {
-          extractedItems = JSON.parse(cleanedContent);
+          // Single item or unexpected format
+          console.warn('Unexpected JSON format:', typeof parsed);
+          extractedItems = [];
         }
       }
       
       agentSpan.setAttribute('output.parsing.success', true);
-      agentSpan.setAttribute('output.markdown_removed', content !== cleanedContent);
+      agentSpan.setAttribute('output.markdown_removed', hadMarkdown);
+      agentSpan.setAttribute('output.raw_response_length', content.length);
+      agentSpan.setAttribute('output.cleaned_response_length', cleanedContent.length);
     } catch (parseError) {
       console.error('Failed to parse JSON response:', parseError);
+      console.error('Raw content:', content);
       agentSpan.setAttribute('output.parsing.success', false);
       agentSpan.setAttribute('output.parsing.error', parseError.message);
+      agentSpan.setAttribute('output.raw_content_preview', content.substring(0, 200));
       extractedItems = [];
     }
 

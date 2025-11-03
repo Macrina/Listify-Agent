@@ -587,22 +587,61 @@ async function analyzeLinkWithFetch(url, parentSpan = null, parentNodeId = null)
                const html = await response.text();
                const $ = cheerio.load(html);
                
-    // Extract text content
-    const textContent = $('body').text().replace(/\s+/g, ' ').trim();
+    // Extract text content - try to get structured data first, then fallback to body text
+    let textContent = '';
+    
+    // Try to extract structured data from JSON-LD scripts (common for lists/rankings)
+    const jsonLdScripts = $('script[type="application/ld+json"]');
+    if (jsonLdScripts.length > 0) {
+      console.log(`Found ${jsonLdScripts.length} JSON-LD script(s), extracting structured data...`);
+      jsonLdScripts.each((i, el) => {
+        try {
+          const jsonData = JSON.parse($(el).html());
+          // Extract list items from structured data if available
+          if (jsonData.itemListElement && Array.isArray(jsonData.itemListElement)) {
+            const itemsText = jsonData.itemListElement.map((item, idx) => {
+              const itemData = item.item || item;
+              return `${idx + 1}. ${itemData.name || itemData.title || 'Item'}${itemData.description ? ' - ' + itemData.description : ''}`;
+            }).join('\n');
+            textContent += itemsText + '\n';
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+      });
+    }
+    
+    // Also extract visible text from body
+    const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+    if (bodyText.length > textContent.length) {
+      textContent = bodyText;
+    }
+    
+    // Clean up text content
+    textContent = textContent.trim();
     
     console.log('Page content extracted via fetch, length:', textContent.length);
+    console.log('Content preview (first 500 chars):', textContent.substring(0, 500));
     
     // Analyze the text content using OpenAI
     const prompt = `You are an expert at extracting and structuring information from web page content.
 
-Analyze this web page content and extract ALL list items, tasks, notes, or structured information.
+Analyze this web page content and extract ALL list items, entries, products, movies, shows, articles, or any structured information that appears in a list format.
 
 For EACH item you find, provide:
 - item_name: The main text/title of the item (required)
-- category: Choose the most appropriate category from: groceries, tasks, contacts, events, inventory, ideas, recipes, shopping, bills, other
-- quantity: Any number or quantity mentioned (if visible, otherwise null)
-- notes: Any additional details, context, or descriptions
+- category: Choose the most appropriate category from: groceries, tasks, contacts, events, inventory, ideas, recipes, shopping, bills, entertainment, media, products, services, other
+- quantity: Any number, rank, position, or quantity mentioned (if visible, otherwise null)
+- notes: Any additional details, context, ratings, descriptions, or metadata
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
+
+IMPORTANT: Extract ALL items from lists, rankings, tables, or structured content. This includes:
+- Movie/TV show rankings and lists
+- Product listings
+- Article titles
+- Any numbered or bulleted lists
+- Table rows with item information
+- Chart or ranking data
 
 CRITICAL FORMATTING REQUIREMENTS:
 1. You MUST return a valid JSON object with an "items" array property
@@ -613,7 +652,7 @@ CRITICAL FORMATTING REQUIREMENTS:
 6. If no items found, return: {"items": []}
 
 Example correct format:
-{"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": null, "notes": null, "explanation": "Essential dairy product"}]}
+{"items": [{"item_name": "The Shawshank Redemption", "category": "entertainment", "quantity": "1", "notes": "Rating: 9.3", "explanation": "Classic drama film"}]}
 
 Web page content:
 ${textContent.substring(0, 4000)}`;

@@ -994,7 +994,7 @@ ${textContent.substring(0, 8000)}`;
       });
       agentSpan.end();
       
-      return await analyzeLinkWithFetch(url);
+      return await analyzeLinkWithFetch(url, parentNodeId);
     }
 
   } catch (error) {

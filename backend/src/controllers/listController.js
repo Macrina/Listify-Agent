@@ -10,6 +10,7 @@ import {
   executeQuery,
 } from '../services/agentdbRealDatabaseService.js';
 import { flushTraces } from '../config/arize.js';
+import logger from '../utils/logger.js';
 import fs from 'fs';
 
 /**
@@ -17,7 +18,10 @@ import fs from 'fs';
  */
 export async function uploadImage(req, res) {
   try {
-    console.log('Upload image request received');
+    logger.info('Upload image request received', { 
+      filename: req.file?.originalname,
+      size: req.file?.size 
+    });
     
     if (!req.file) {
       console.log('No file provided in request');
@@ -49,9 +53,12 @@ export async function uploadImage(req, res) {
     }
 
     // Analyze the image - pass parent span from request context
-    console.log('Starting image analysis for:', req.file.originalname);
+    logger.info('Starting image analysis', { filename: req.file.originalname });
     const extractedItems = await analyzeImage(imageData, req.file.mimetype, req.span);
-    console.log('Image analysis completed, extracted items:', extractedItems.length);
+    logger.info('Image analysis completed', { 
+      items_extracted: extractedItems.length,
+      filename: req.file.originalname
+    });
 
     // Flush traces to ensure they're exported
     await flushTraces();

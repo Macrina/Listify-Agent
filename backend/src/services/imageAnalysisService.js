@@ -92,20 +92,16 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
+CRITICAL FORMATTING REQUIREMENTS:
+1. You MUST return a valid JSON object with an "items" array property
+2. Do NOT wrap your response in markdown code blocks
+3. Do NOT use \`\`\`json or \`\`\` tags
+4. Do NOT include any text before or after the JSON
+5. Return ONLY valid JSON starting with { and ending with }
+6. If no items found, return: {"items": []}
 
-Example format (return this exact structure, no markdown):
-[
-  {
-    "item_name": "Buy milk",
-    "category": "groceries",
-    "quantity": "2 gallons",
-    "notes": "Prefer organic",
-    "explanation": "Essential dairy product for daily nutrition and cooking needs."
-  }
-]
-
-If no list items are found, return an empty array: []`;
+Example correct format:
+{"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": "2 gallons", "notes": "Prefer organic", "explanation": "Essential dairy product"}]}`;
 
     // Call OpenAI Vision API
     console.log('Calling OpenAI Vision API...');
@@ -574,12 +570,19 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
+CRITICAL FORMATTING REQUIREMENTS:
+1. You MUST return a valid JSON object with an "items" array property
+2. Do NOT wrap your response in markdown code blocks
+3. Do NOT use \`\`\`json or \`\`\` tags
+4. Do NOT include any text before or after the JSON
+5. Return ONLY valid JSON starting with { and ending with }
+6. If no items found, return: {"items": []}
+
+Example correct format:
+{"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": null, "notes": null, "explanation": "Essential dairy product"}]}
 
 Web page content:
-${textContent.substring(0, 4000)} // Limit content to avoid token limits
-
-If no list items are found, return an empty array: []`;
+${textContent.substring(0, 4000)}`;
 
     // Create LLM span for OpenAI text completion
     const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
@@ -798,12 +801,19 @@ For EACH item you find, provide:
 - notes: Any additional details, context, or descriptions
 - explanation: A short, helpful explanation of what this item is or why it might be useful (1-2 sentences)
 
-IMPORTANT: Return ONLY a raw JSON array. Do NOT wrap it in markdown code blocks, do NOT use \`\`\`json tags. Return the JSON array directly, starting with [ and ending with ].
+CRITICAL FORMATTING REQUIREMENTS:
+1. You MUST return a valid JSON object with an "items" array property
+2. Do NOT wrap your response in markdown code blocks
+3. Do NOT use \`\`\`json or \`\`\` tags
+4. Do NOT include any text before or after the JSON
+5. Return ONLY valid JSON starting with { and ending with }
+6. If no items found, return: {"items": []}
+
+Example correct format:
+{"items": [{"item_name": "Buy milk", "category": "groceries", "quantity": null, "notes": null, "explanation": "Essential dairy product"}]}
 
 Web page content:
-${textContent.substring(0, 8000)} // Limit content length
-
-If no list items are found, return an empty array: []`;
+${textContent.substring(0, 8000)}`;
 
       // Create LLM span for OpenAI text completion
       const llmSpan = createLLMSpan('openai.text.completion', 'gpt-4o', prompt, {
